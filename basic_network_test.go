@@ -1,4 +1,4 @@
-package net
+package basicnet
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	net "gx/ipfs/QmahYsGWry85Y7WUe2SX5G4JkH2zifEQAUtJVLZ24aC9DF/go-libp2p-net"
 
 	"github.com/golang/glog"
+	"github.com/livepeer/go-livepeer/types"
 )
 
 func setupNodes() (*BasicVideoNetwork, *BasicVideoNetwork) {
@@ -472,7 +473,7 @@ func TestSendTranscodeResult(t *testing.T) {
 	//Create the broadcaster, to capture the transcode result
 	n2.GetBroadcaster("strmid")
 
-	n1.SendTranscodeResult(peer.IDHexEncode(n2.NetworkNode.Identity), "strmid", map[string]string{"strmid1": P_240P_30FPS_4_3.Name, "strmid2": P_360P_30FPS_4_3.Name})
+	n1.SendTranscodeResult(peer.IDHexEncode(n2.NetworkNode.Identity), "strmid", map[string]string{"strmid1": types.P_240P_30FPS_4_3.Name, "strmid2": types.P_360P_30FPS_4_3.Name})
 
 	//Wait until n2 get the result
 	start := time.Now()
@@ -484,11 +485,11 @@ func TestSendTranscodeResult(t *testing.T) {
 		}
 	}
 
-	if n2.broadcasters["strmid"].TranscodedIDs["strmid1"] != P_240P_30FPS_4_3 {
+	if n2.broadcasters["strmid"].TranscodedIDs["strmid1"] != types.P_240P_30FPS_4_3 {
 		t.Errorf("Expecting 240P for strmid1, but got %v", n2.broadcasters["strmid"].TranscodedIDs["strmid1"])
 	}
 
-	if n2.broadcasters["strmid"].TranscodedIDs["strmid2"] != P_360P_30FPS_4_3 {
+	if n2.broadcasters["strmid"].TranscodedIDs["strmid2"] != types.P_360P_30FPS_4_3 {
 		t.Errorf("Expecting 360P for strmid2, but got %v", n2.broadcasters["strmid"].TranscodedIDs["strmid2"])
 	}
 }

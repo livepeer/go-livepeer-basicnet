@@ -1,4 +1,4 @@
-package net
+package basicnet
 
 import (
 	metrics "gx/ipfs/QmVjRAPfRtResCMCE4eBqr4Beoa6A89P1YweG9wUS6RqUL/go-libp2p-metrics"

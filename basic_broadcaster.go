@@ -1,4 +1,4 @@
-package net
+package basicnet
 
 import (
 	"context"
@@ -6,12 +6,13 @@ import (
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 
 	"github.com/golang/glog"
+	"github.com/livepeer/go-livepeer/types"
 )
 
 //BasicBroadcaster is unique for a specific video stream. It keeps track of a list of listeners and a queue of video chunks.  It won't start keeping track of things until there is at least 1 listener.
 type BasicBroadcaster struct {
 	Network       *BasicVideoNetwork
-	TranscodedIDs map[string]VideoProfile
+	TranscodedIDs map[string]types.VideoProfile
 	q             chan *StreamDataMsg
 	listeners     map[string]*BasicStream
 	StrmID        string

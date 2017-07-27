@@ -4,7 +4,7 @@ The BasicVideoNetwork is a push-based streaming protocol.  It works as follow:
 	- When a viewer wants to view a video, it sends a subscribe request to the network
 	- The network routes the request towards the broadcast node via kademlia routing
 */
-package net
+package basicnet
 
 import (
 	"context"
@@ -18,6 +18,7 @@ import (
 
 	"github.com/golang/glog"
 	lpnet "github.com/livepeer/go-livepeer/net"
+	"github.com/livepeer/go-livepeer/types"
 )
 
 var Protocol = protocol.ID("/livepeer_video/0.0.1")
@@ -54,7 +55,7 @@ func (n *BasicVideoNetwork) GetNodeID() string {
 func (n *BasicVideoNetwork) GetBroadcaster(strmID string) (lpnet.Broadcaster, error) {
 	b, ok := n.broadcasters[strmID]
 	if !ok {
-		b = &BasicBroadcaster{Network: n, StrmID: strmID, q: make(chan *StreamDataMsg), listeners: make(map[string]*BasicStream), TranscodedIDs: make(map[string]VideoProfile)}
+		b = &BasicBroadcaster{Network: n, StrmID: strmID, q: make(chan *StreamDataMsg), listeners: make(map[string]*BasicStream), TranscodedIDs: make(map[string]types.VideoProfile)}
 		n.broadcasters[strmID] = b
 	}
 	return b, nil
@@ -344,10 +345,10 @@ func handleTranscodeResult(nw *BasicVideoNetwork, tr TranscodeResultMsg) error {
 	}
 
 	for s, v := range tr.Result {
-		if VideoProfileLookup[v].Name == "" {
+		if types.VideoProfileLookup[v].Name == "" {
 			glog.Errorf("Error Handling Transcode Result - cannot find video profile: %v", v)
 		} else {
-			b.TranscodedIDs[s] = VideoProfileLookup[v]
+			b.TranscodedIDs[s] = types.VideoProfileLookup[v]
 		}
 	}
 
