@@ -24,11 +24,11 @@ import (
 
 func setupNodes() (*BasicVideoNetwork, *BasicVideoNetwork) {
 	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(15000, priv1, pub1)
+	no1, _ := NewNode(15000, priv1, pub1, &BasicNotifiee{})
 	n1, _ := NewBasicVideoNetwork(no1)
 
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15001, priv2, pub2)
+	no2, _ := NewNode(15001, priv2, pub2, &BasicNotifiee{})
 	n2, _ := NewBasicVideoNetwork(no2)
 
 	return n1, n2
@@ -70,10 +70,10 @@ func TestSubPeerForwardPath(t *testing.T) {
 	})
 	// glog.Infof("keys: %v", keys)
 
-	no1, _ := NewNode(15000, keys[0].Priv, keys[0].Pub)
+	no1, _ := NewNode(15000, keys[0].Priv, keys[0].Pub, &BasicNotifiee{})
 	n1, _ := NewBasicVideoNetwork(no1)
-	no2, _ := NewNode(15001, keys[1].Priv, keys[1].Pub)
-	no3, _ := NewNode(15000, keys[2].Priv, keys[2].Pub) //Make this node unreachable from n1 because it's using the same port
+	no2, _ := NewNode(15001, keys[1].Priv, keys[1].Pub, &BasicNotifiee{})
+	no3, _ := NewNode(15000, keys[2].Priv, keys[2].Pub, &BasicNotifiee{}) //Make this node unreachable from n1 because it's using the same port
 
 	connectHosts(n1.NetworkNode.PeerHost, no2.PeerHost)
 	connectHosts(no2.PeerHost, no3.PeerHost)
