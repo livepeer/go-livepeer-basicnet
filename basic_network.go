@@ -7,6 +7,7 @@ The BasicVideoNetwork is a push-based streaming protocol.  It works as follow:
 package basicnet
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -142,48 +143,32 @@ func (n *BasicVideoNetwork) ReceivedTranscodeResponse(strmID string, gotResult f
 
 //GetMasterPlaylist issues a request to the broadcaster for the MasterPlaylist and returns the channel to the playlist. The broadcaster should send the response back as soon as it gets the request.
 func (n *BasicVideoNetwork) GetMasterPlaylist(p string, strmID string) (chan *m3u8.MasterPlaylist, error) {
-	pid, err := peer.IDHexDecode(p)
-	if err != nil {
-		glog.Errorf("Bad peer id: %v - %v", p, err)
-		return nil, err
-	}
+	c := make(chan *m3u8.MasterPlaylist)
+	n.mplChans[strmID] = c
 
-	if len(n.NetworkNode.PeerHost.Peerstore().Addrs(pid)) == 0 {
-		pinfo, err := n.NetworkNode.Kad.FindPeer(context.Background(), pid)
+	go func() {
+		pl, err := n.NetworkNode.Kad.GetValue(context.Background(), fmt.Sprintf("/v/%v", strmID))
 		if err != nil {
-			glog.Errorf("Error geting peer info for %v: %v", peer.IDHexEncode(pid), err)
-			return nil, err
+			glog.Errorf("Error getting value for %v: %v", strmID, err)
+			return
 		}
-		n.NetworkNode.PeerHost.Peerstore().AddAddrs(pinfo.ID, pinfo.Addrs, peerstore.PermanentAddrTTL)
-	}
-
-	ws := n.NetworkNode.GetStream(pid)
-	if ws != nil {
-		if err = ws.SendMessage(GetMasterPlaylistReqID, GetMasterPlaylistReqMsg{StrmID: strmID}); err != nil {
-			glog.Errorf("Error sending get master playlist message: %v", err)
-			return nil, err
+		mpl := m3u8.NewMasterPlaylist()
+		if err := mpl.DecodeFrom(bytes.NewReader(pl), true); err == nil {
+			c <- mpl
+		} else {
+			glog.Errorf("Error decoding master playlist: %v", err)
 		}
-		c := make(chan *m3u8.MasterPlaylist)
-		n.mplChans[strmID] = c
+	}()
 
-		go func() {
-			for {
-				if err := streamHandler(n, ws); err != nil {
-					glog.Errorf("Error handling stream: %v", err)
-					return
-				}
-			}
-
-		}()
-		return c, nil
-	}
-
-	return nil, ErrGetMasterPlaylist
+	return c, nil
 }
 
 //UpdateMasterPlaylist updates the copy of the master playlist so any node can request it.
 func (n *BasicVideoNetwork) UpdateMasterPlaylist(strmID string, mpl *m3u8.MasterPlaylist) error {
-	n.mplMap[strmID] = mpl
+	if err := n.NetworkNode.Kad.PutValue(context.Background(), fmt.Sprintf("/v/%v", strmID), mpl.Encode().Bytes()); err != nil {
+		glog.Errorf("Error putting playlist into DHT: %v", err)
+		return err
+	}
 	return nil
 }
 

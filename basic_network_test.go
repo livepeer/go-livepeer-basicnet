@@ -1,8 +1,11 @@
 package basicnet
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -45,6 +48,78 @@ func connectHosts(h1, h2 host.Host) {
 
 	// Connection might not be formed right away under high load.  See https://github.com/libp2p/go-libp2p-kad-dht/blob/master/dht_test.go (func connect)
 	time.Sleep(time.Millisecond * 500)
+}
+
+type keyPair struct {
+	Priv crypto.PrivKey
+	Pub  crypto.PubKey
+}
+
+func TestSubPeerForwardPath(t *testing.T) {
+	keys := make([]keyPair, 3)
+	for i := 0; i < 3; i++ {
+		priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+		keys[i] = keyPair{Priv: priv, Pub: pub}
+	}
+
+	// glog.Infof("keys: %v", keys)
+	sort.Slice(keys, func(i, j int) bool {
+		ibytes, _ := keys[i].Pub.Bytes()
+		jbytes, _ := keys[j].Pub.Bytes()
+		return bytes.Compare(ibytes, jbytes) < 0
+	})
+	// glog.Infof("keys: %v", keys)
+
+	no1, _ := NewNode(15000, keys[0].Priv, keys[0].Pub)
+	n1, _ := NewBasicVideoNetwork(no1)
+	no2, _ := NewNode(15001, keys[1].Priv, keys[1].Pub)
+	no3, _ := NewNode(15000, keys[2].Priv, keys[2].Pub) //Make this node unreachable from n1 because it's using the same port
+
+	connectHosts(n1.NetworkNode.PeerHost, no2.PeerHost)
+	connectHosts(no2.PeerHost, no3.PeerHost)
+
+	n3chan := make(chan bool)
+	no3.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
+		ws := NewBasicStream(s)
+		var msg Msg
+		err := ws.ReceiveMessage(&msg)
+		if err != nil {
+			t.Errorf("Error receiving msg: %v", err)
+		}
+		n3chan <- true
+		// glog.Infof("no3 msg: %v", msg)
+	})
+
+	n2chan := make(chan bool)
+	no2.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
+		ws := NewBasicStream(s)
+		var msg Msg
+		err := ws.ReceiveMessage(&msg)
+		if err != nil {
+			t.Errorf("Error receiving msg: %v", err)
+		}
+		n2chan <- true
+		// glog.Infof("no2 msg: %v", msg)
+	})
+
+	//n1 subscribe from n3 - should go through n2 because n3 is not directly reachable from n1
+	s1tmp, _ := n1.GetSubscriber(fmt.Sprintf("%v%v", peer.IDHexEncode(no3.Identity), "strmID"))
+	s1, _ := s1tmp.(*BasicSubscriber)
+	s1.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
+		glog.Infof("Got response: %v, %v", seqNo, data)
+	})
+
+	timer := time.NewTimer(time.Second)
+	select {
+	case <-n2chan:
+		//This is the good case
+		return
+	case <-n3chan:
+		t.Errorf("Should go to n2 instead.")
+	case <-timer.C:
+		t.Errorf("Timeout")
+	}
+
 }
 
 func TestSendBroadcast(t *testing.T) {
@@ -507,13 +582,14 @@ func TestMasterPlaylist(t *testing.T) {
 	mpl := m3u8.NewMasterPlaylist()
 	pl, _ := m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
+	strmID := "12209433a695c8bf34ef6a40863cfe7ed64266d876176aee13732293b63ba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c"
 
-	err := n1.UpdateMasterPlaylist("test", mpl)
+	err := n1.UpdateMasterPlaylist(strmID, mpl)
 	if err != nil {
 		t.Errorf("Error updating master playlist")
 	}
 
-	mplc, err := n2.GetMasterPlaylist(n1.GetNodeID(), "test")
+	mplc, err := n2.GetMasterPlaylist(n1.GetNodeID(), strmID)
 	if err != nil {
 		t.Errorf("Error getting master playlist: %v", err)
 	}

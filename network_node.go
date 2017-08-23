@@ -17,6 +17,7 @@ import (
 	swarm "gx/ipfs/QmaijwHnbD4SabGA8C2fN9gchptLvRe2RxqTU5XkjAGBw5/go-libp2p-swarm"
 	bhost "gx/ipfs/QmapADMpK4e5kFGBxC2aHreaDqKP9vmMng5f91MA14Ces9/go-libp2p/p2p/host/basic"
 	rhost "gx/ipfs/QmapADMpK4e5kFGBxC2aHreaDqKP9vmMng5f91MA14Ces9/go-libp2p/p2p/host/routed"
+	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
 )
 
 type NetworkNode struct {
@@ -65,6 +66,10 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey) (*NetworkNo
 	basicHost := bhost.New(netwrk, bhost.NATPortMap)
 
 	dht, err := constructDHTRouting(context.Background(), basicHost, ds.NewMapDatastore())
+	if err != nil {
+		glog.Errorf("Error constructing DHT: %v", err)
+		return nil, err
+	}
 	rHost := rhost.Wrap(basicHost, dht)
 
 	glog.Infof("Created node: %v at %v", peer.IDHexEncode(rHost.ID()), rHost.Addrs())
@@ -73,8 +78,18 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey) (*NetworkNo
 
 func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching) (*kad.IpfsDHT, error) {
 	dhtRouting := kad.NewDHT(ctx, host, dstore)
+
+	dhtRouting.Validator["v"] = &record.ValidChecker{
+		Func: func(string, []byte) error {
+			return nil
+		},
+		Sign: false,
+	}
+	dhtRouting.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
+
 	if err := dhtRouting.Bootstrap(context.Background()); err != nil {
 		glog.Errorf("Error bootstraping dht: %v", err)
+		return nil, err
 	}
 	return dhtRouting, nil
 }
