@@ -11,7 +11,8 @@ import (
 
 //BasicNotifiee gets called during important libp2p events
 type BasicNotifiee struct {
-	monitor *lpmon.Monitor
+	monitor           *lpmon.Monitor
+	disconnectHandler func(pid peer.ID)
 }
 
 func NewBasicNotifiee(mon *lpmon.Monitor) *BasicNotifiee {
@@ -42,6 +43,13 @@ func (bn *BasicNotifiee) Disconnected(n net.Network, conn net.Conn) {
 	if bn.monitor != nil {
 		bn.monitor.RemoveConn(peer.IDHexEncode(conn.LocalPeer()), peer.IDHexEncode(conn.RemotePeer()))
 	}
+	if bn.disconnectHandler != nil {
+		bn.disconnectHandler(conn.RemotePeer())
+	}
+}
+
+func (bn *BasicNotifiee) HandleDisconnect(h func(pid peer.ID)) {
+	bn.disconnectHandler = h
 }
 
 // called when a stream opened
