@@ -182,7 +182,7 @@ func (n *BasicVideoNetwork) SetupProtocol() error {
 		for {
 			if err := streamHandler(n, ws); err != nil {
 				glog.Errorf("Error handling stream: %v", err)
-				delete(n.NetworkNode.streams, stream.Conn().RemotePeer())
+				n.NetworkNode.RemoveStream(stream.Conn().RemotePeer())
 				stream.Close()
 				return
 			}
@@ -196,7 +196,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicStream) error {
 	var msg Msg
 
 	if err := ws.ReceiveMessage(&msg); err != nil {
-		glog.Errorf("Got error decoding msg: %v", err)
+		glog.Errorf("%v Got error decoding msg: %v", peer.IDHexEncode(ws.Stream.Conn().LocalPeer()), err)
 		return err
 	}
 	glog.Infof("%v Received a message %v from %v", peer.IDHexEncode(ws.Stream.Conn().LocalPeer()), msg.Op, peer.IDHexEncode(ws.Stream.Conn().RemotePeer()))
@@ -298,7 +298,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 				if ns != nil {
 					if err := ns.SendMessage(SubReqID, subReq); err != nil {
 						//Question: Do we want to close the stream here?
-						glog.Errorf("Error relaying subReq to %v: %v", p, err)
+						glog.Errorf("Error relaying subReq to %v: %v.", p, err)
 						continue
 					}
 
@@ -428,7 +428,7 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, tr TranscodeResponseMsg) err
 func handleGetMasterPlaylistReq(nw *BasicVideoNetwork, ws *BasicStream, mplr GetMasterPlaylistReqMsg) error {
 	mpl, ok := nw.mplMap[mplr.StrmID]
 	if !ok {
-		glog.Errorf("Got master playlist request, but can't find the playlist")
+		glog.Errorf("Got master playlist request for %v, but can't find the playlist", mplr.StrmID)
 		return ws.SendMessage(MasterPlaylistDataID, MasterPlaylistDataMsg{StrmID: mplr.StrmID, NotFound: true})
 	}
 
