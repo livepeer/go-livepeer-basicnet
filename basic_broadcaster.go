@@ -40,7 +40,9 @@ func (b *BasicBroadcaster) Broadcast(seqNo uint64, data []byte) error {
 //Finish signals the stream is finished.  It cancels the broadcasting worker routine and sends the Finish message to all the listeners.
 func (b *BasicBroadcaster) Finish() error {
 	//Cancel worker
-	b.cancelWorker()
+	if b.cancelWorker != nil {
+		b.cancelWorker()
+	}
 
 	//Send Finish to all the listeners
 	for _, l := range b.listeners {
