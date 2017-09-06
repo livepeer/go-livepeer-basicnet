@@ -1,0 +1,28 @@
+{
+    "author": "livepeer",
+    "bugs": {
+      "url": "https://github.com/livepeer/go-livepeer-basicnet"
+    },
+    "gxDependencies": [
+        {
+            "hash": "QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji",
+            "name": "go-multiaddr"
+          },
+          {
+            "hash": "QmX3U3YXCQ6UYBxq2LVWF8dARS1hPUTEYLrSx654Qyxyw6",
+            "name": "go-multiaddr-net"
+          },
+          {
+            "hash": "QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr",
+            "name": "go-libp2p-peerstore"
+          },
+          {
+            "hash": "QmTHyAbD9KzGrseLNzmEoNkVxA8F2h7LQG2iV6uhBqs6kX",
+            "name": "go-libp2p-kad-dht"
+          },
+          {
+              "hash": "QmVRuqGJ881CFiNLgwWSfRVjTjqQ6FeCNufkftNC4fpACZ",
+              "name": "go-multicodec"
+          }
+    ]
+}
