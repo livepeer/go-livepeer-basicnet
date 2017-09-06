@@ -1,8 +1,3 @@
 dependencies:
   cache_directories:
     - "$HOME/.go_workspace/"
-  override:
-    - go get -u github.com/whyrusleeping/gx
-    - cd ~/go-livepeer-basicnet
-    - gx install
-    - go get ./...
