@@ -5,3 +5,4 @@ dependencies:
     - go get -u github.com/whyrusleeping/gx
     - cd ~/go-livepeer-basicnet
     - gx install
+    - go get ./...
