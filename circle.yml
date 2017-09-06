@@ -1,6 +1,7 @@
 dependencies:
   pre:
-    - go get github.com/whyrusleeping/gx-go
+    - go get -u github.com/whyrusleeping/gx
+    - go get -u github.com/whyrusleeping/gx-go
   override:
     - gx-go get gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore
     - gx-go get gx/ipfs/QmR1fAHJvEyYFdEGn5jVmU4NL5kNSVJ48cduXB2whWbJq2/go-addr-util
