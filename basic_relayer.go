@@ -2,6 +2,7 @@ package basicnet
 
 import (
 	"fmt"
+
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 
 	"github.com/golang/glog"
