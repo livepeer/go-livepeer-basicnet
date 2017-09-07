@@ -491,7 +491,7 @@ func simpleRelayHandler(ws *BasicStream, t *testing.T) Msg {
 	var msg Msg
 	err := ws.ReceiveMessage(&msg)
 	if err != nil {
-		glog.Errorf("Got error decoding msg: %v", err)
+		// glog.Errorf("Got error decoding msg: %v", err)
 		return Msg{}
 	}
 	return msg
@@ -522,7 +522,7 @@ func TestRelaying(t *testing.T) {
 		for {
 			msg := simpleRelayHandler(s3, t)
 
-			glog.Infof("Got msg: %v", msg)
+			// glog.Infof("Got msg: %v", msg)
 			switch msg.Data.(type) {
 			case StreamDataMsg:
 				strmDataResult, ok = msg.Data.(StreamDataMsg)
