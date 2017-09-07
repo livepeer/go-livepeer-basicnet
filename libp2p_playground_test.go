@@ -267,11 +267,7 @@ func TestProvider(t *testing.T) {
 }
 
 func TestCid(t *testing.T) {
-	// n1, n2 := simpleNodes(15010, 15011)
-	// n3, n4 := simpleNodes(15012, 15013)
-	// connectHosts(n1.PeerHost, n2.PeerHost)
-	// connectHosts(n2.PeerHost, n3.PeerHost)
-	// connectHosts(n3.PeerHost, n4.PeerHost)
+
 	ctx := context.Background()
 	nDHTs := 101
 	dhts, hosts := setupDHTS(ctx, nDHTs, t)

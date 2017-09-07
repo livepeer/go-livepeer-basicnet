@@ -66,6 +66,8 @@ func TestReconnect(t *testing.T) {
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	go n1.SetupProtocol()
 	go n2.SetupProtocol()
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n2.NetworkNode.PeerHost.Close()
 
 	//Send a message, it should work
 	s := n2.NetworkNode.GetStream(n1.NetworkNode.Identity)
@@ -109,6 +111,10 @@ func TestSubPeerForwardPath(t *testing.T) {
 	n1, _ := NewBasicVideoNetwork(no1)
 	no2, _ := NewNode(15001, keys[1].Priv, keys[1].Pub, &BasicNotifiee{})
 	no3, _ := NewNode(15000, keys[2].Priv, keys[2].Pub, &BasicNotifiee{}) //Make this node unreachable from n1 because it's using the same port
+	defer no1.PeerHost.Close()
+	defer n1.NetworkNode.PeerHost.Close()
+	defer no2.PeerHost.Close()
+	defer no3.PeerHost.Close()
 
 	connectHosts(n1.NetworkNode.PeerHost, no2.PeerHost)
 	connectHosts(no2.PeerHost, no3.PeerHost)
@@ -159,9 +165,13 @@ func TestSubPeerForwardPath(t *testing.T) {
 
 func TestSendBroadcast(t *testing.T) {
 	glog.Infof("\n\nTesting Broadcast Stream...")
-	n1, _ := setupNodes()
+	n1, n3 := setupNodes()
 	//n2 is simple node so we can register our own handler and inspect the incoming messages
-	n2, _ := simpleNodes(15002, 15003)
+	n2, n4 := simpleNodes(15002, 15003)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
+	defer n2.PeerHost.Close()
+	defer n4.PeerHost.Close()
 	connectHosts(n1.NetworkNode.PeerHost, n2.PeerHost)
 
 	var strmData StreamDataMsg
@@ -235,8 +245,12 @@ func TestSendBroadcast(t *testing.T) {
 
 func TestHandleBroadcast(t *testing.T) {
 	glog.Infof("\n\nTesting Handle Broadcast...")
-	n1, _ := setupNodes()
-	n2, _ := simpleNodes(15002, 15003)
+	n1, n3 := setupNodes()
+	n2, n4 := simpleNodes(15002, 15003)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
+	defer n2.PeerHost.Close()
+	defer n4.PeerHost.Close()
 	connectHosts(n1.NetworkNode.PeerHost, n2.PeerHost)
 
 	var cancelMsg CancelSubMsg
@@ -318,8 +332,12 @@ func TestHandleBroadcast(t *testing.T) {
 
 func TestSendSubscribe(t *testing.T) {
 	glog.Infof("\n\nTesting Subscriber...")
-	n1, _ := setupNodes()
-	n2, _ := simpleNodes(15002, 15003)
+	n1, n3 := setupNodes()
+	n2, n4 := simpleNodes(15002, 15003)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
+	defer n2.PeerHost.Close()
+	defer n4.PeerHost.Close()
 	connectHosts(n1.NetworkNode.PeerHost, n2.PeerHost)
 
 	var subReq SubReqMsg
@@ -419,8 +437,12 @@ func TestSendSubscribe(t *testing.T) {
 
 func TestHandleSubscribe(t *testing.T) {
 	glog.Infof("\n\nTesting Handle Broadcast...")
-	n1, _ := setupNodes()
-	n2, _ := simpleNodes(15002, 15003)
+	n1, n3 := setupNodes()
+	n2, n4 := simpleNodes(15002, 15003)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
+	defer n2.PeerHost.Close()
+	defer n4.PeerHost.Close()
 	connectHosts(n1.NetworkNode.PeerHost, n2.PeerHost)
 
 	n2.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
@@ -476,7 +498,12 @@ func simpleRelayHandler(ws *BasicStream, t *testing.T) Msg {
 }
 func TestRelaying(t *testing.T) {
 	n1, n2 := setupNodes()
-	n3, _ := simpleNodes(15002, 15003)
+	n3, n4 := simpleNodes(15002, 15003)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n2.NetworkNode.PeerHost.Close()
+	defer n3.PeerHost.Close()
+	defer n4.PeerHost.Close()
+
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	connectHosts(n2.NetworkNode.PeerHost, n3.PeerHost)
 
@@ -578,6 +605,8 @@ func TestRelaying(t *testing.T) {
 func TestSendTranscodeResponse(t *testing.T) {
 	glog.Infof("\n\nTesting Handle Transcode Result...")
 	n1, n2 := setupNodes()
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n2.NetworkNode.PeerHost.Close()
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	go n1.SetupProtocol()
 	go n2.SetupProtocol()
@@ -610,11 +639,14 @@ func TestSendTranscodeResponse(t *testing.T) {
 
 func TestMasterPlaylist(t *testing.T) {
 	glog.Infof("\n\nTesting handle master playlist")
-	n1, _ := setupNodes()
+	n1, n3 := setupNodes()
 
 	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 	no2, _ := NewNode(15003, priv, pub, &BasicNotifiee{})
 	n2, _ := NewBasicVideoNetwork(no2)
+	defer n1.NetworkNode.PeerHost.Close()
+	defer n2.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
 
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	go n1.SetupProtocol()
