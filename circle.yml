@@ -8,19 +8,19 @@ dependencies:
   override:
     - go get -u github.com/whyrusleeping/gx
     - go get -u github.com/whyrusleeping/gx-go
-    - cd "$HOME/.go_workspace/src/github.com"
     - go get github.com/multiformats/go-multicodec
     - go get github.com/jbenet/go-msgio
-    - mkdir livepeer
-    - cd livepeer
-    - git clone git@github.com:livepeer/go-livepeer-basicnet.git
+#    - cd "$HOME/.go_workspace/src/github.com"
+#    - mkdir livepeer
+#    - cd livepeer
+#    - git clone git@github.com:livepeer/go-livepeer-basicnet.git
     - cd go-livepeer-basicnet
     - gx install
-    - rm -rf /home/ubuntu/go-livepeer-basicnet
+    # - rm -rf /home/ubuntu/go-livepeer-basicnet
     - go get ./...
-    - mv ../go-livepeer/vendor/github.com/golang/glog ../go-livepeer/vendor/github.com/golang/glog_backup
+    - mv $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/vendor/github.com/golang/glog $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/vendor/github.com/golang/glog_backup
 
 test:
   override:
-    - cd "$HOME/.go_workplace/src/github.com/livepeer/go-livepeer-basicnet"
+    - cd "$HOME/go-livepeer-basicnet"
     - go test
