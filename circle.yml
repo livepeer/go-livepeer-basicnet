@@ -6,7 +6,7 @@ dependencies:
     - "$HOME/.go_workspace/"
   override:
     - go get -u github.com/whyrusleeping/gx
-    - go get github.com/livepeer/go-livepeer-basicnet
+    - go get -d github.com/livepeer/go-livepeer-basicnet
     - go get github.com/multiformats/go-multicodec
     - go get github.com/jbenet/go-msgio
     - cd "$HOME/.go_workplace/src/github.com/go-livepeer-basicnet"
