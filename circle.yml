@@ -2,7 +2,9 @@ machine:
   environment:
     GOROOT: /usr/local/go
 
-checkout:
+dependencies:
+  cache_directories:
+    - "$HOME/.go_workspace/"
   override:
     - go get -u github.com/whyrusleeping/gx
     - go get -u github.com/whyrusleeping/gx-go
@@ -14,13 +16,9 @@ checkout:
     - git clone git@github.com:livepeer/go-livepeer-basicnet.git
     - cd go-livepeer-basicnet
     - gx install
+    - rm -rf /home/ubuntu/go-livepeer-basicnet
     - go get ./...
     - mv ../go-livepeer/vendor/github.com/golang/glog ../go-livepeer/vendor/github.com/golang/glog_backup
-
-dependencies:
-  cache_directories:
-    - "$HOME/.go_workspace/"
-  # override:
 
 test:
   override:
