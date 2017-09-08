@@ -17,7 +17,7 @@ dependencies:
     - cd $HOME/go-livepeer-basicnet
     - gx install
     # - rm -rf /home/ubuntu/go-livepeer-basicnet
-    - go get ./...
+    # - go get ./...
     - mv $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/vendor/github.com/golang/glog $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/vendor/github.com/golang/glog_backup
 
 test:
