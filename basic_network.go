@@ -272,24 +272,29 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 		return nil
 	} else {
 		glog.V(5).Infof("Cannot find local broadcaster or relayer for stream: %v.  Creating a local relayer, and forwarding along to the network", subReq.StrmID)
-		ctx := context.Background()
 
+		targetPid, err := extractNodeID(subReq.StrmID)
+		if err != nil {
+			glog.Errorf("Error extracting node id from streamID: %v", subReq.StrmID)
+			return ErrSubscriber
+		}
 		localPeers := nw.NetworkNode.PeerHost.Peerstore().Peers()
-		peers := kb.SortClosestPeers(localPeers, []byte(subReq.StrmID))
-		// peerc, err := nw.NetworkNode.Kad.GetClosestPeers(ctx, subReq.StrmID)
-		// if err != nil {
-		// 	glog.Errorf("Error finding closer peer: %v", err)
-		// 	return err
+		if len(localPeers) == 1 {
+			glog.Errorf("No local peers")
+			return ErrSubscriber
+		}
+		peers := kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid))
+		// pstr := ""
+		// for _, p := range peers {
+		// 	pstr = fmt.Sprintf("%v, %v", pstr, peer.IDHexEncode(p))
 		// }
+		// glog.Infof("Trying to send Sub to: %v", pstr)
 
-		// var upstrmPeer peer.ID
 		//Subscribe from the network
 		//We can range over peerc because we know it'll be closed by libp2p
 		for _, p := range peers {
-			// select {
-			// case p := <-peerc:
 			//Don't send it back to the requesting peer
-			if p == ws.Stream.Conn().RemotePeer() {
+			if p == ws.Stream.Conn().RemotePeer() || p == nw.NetworkNode.Identity {
 				continue
 			}
 
@@ -305,6 +310,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 					glog.Errorf("Error relaying subReq to %v: %v.", p, err)
 					continue
 				}
+				glog.Infof("Send Sub to %v", peer.IDHexEncode(p))
 
 				//TODO: Figure out when to return from this routine
 				go func() {
@@ -324,13 +330,12 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 				r.listeners[remotePid] = ws
 				return nil
 			} else {
-				glog.Errorf("Cannot find stream: %v", peer.IDHexEncode(p))
+				glog.Errorf("Cannot get stream for peer: %v", peer.IDHexEncode(p))
 			}
-			// case <-ctx.Done():
-			// 	glog.Errorf("Didn't find any peer from network")
-			// 	return ErrNoClosePeers
-			// }
 		}
+
+		glog.Errorf("%v Cannot forward Sub req to any of the peers: %v", nw.GetNodeID(), peers)
+		return ErrProtocol
 	}
 
 }
@@ -459,4 +464,9 @@ func handleMasterPlaylistDataMsg(nw *BasicVideoNetwork, mpld MasterPlaylistDataM
 	close(ch)
 	delete(nw.mplChans, mpld.StrmID)
 	return nil
+}
+
+func extractNodeID(strmID string) (peer.ID, error) {
+	nid := strmID[:68]
+	return peer.IDHexDecode(nid)
 }

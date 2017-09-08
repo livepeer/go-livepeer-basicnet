@@ -13,10 +13,12 @@ import (
 	"github.com/ericxtang/m3u8"
 
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
+	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	host "gx/ipfs/QmUwW8jMQDxXhLD2j4EfWqLEMX3MsvyWcWGvJPVDh1aTmu/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	net "gx/ipfs/QmahYsGWry85Y7WUe2SX5G4JkH2zifEQAUtJVLZ24aC9DF/go-libp2p-net"
+	kad "gx/ipfs/QmeQMs9pr9Goci9xJ1Wo5ZQrknzBZwnmHYWJXA8stQDFMx/go-libp2p-kad-dht"
 
 	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/types"
@@ -92,7 +94,101 @@ func TestReconnect(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 }
 
+func TestSubPath(t *testing.T) {
+	ctx := context.Background()
+	nDHTs := 10
+	dhts, hosts := setupDHTS(ctx, nDHTs, t)
+	defer func() {
+		for i := 0; i < nDHTs; i++ {
+			dhts[i].Close()
+			defer hosts[i].Close()
+		}
+	}()
+
+	ids := make([]peer.ID, 10)
+	dhtLookup := make(map[peer.ID]*kad.IpfsDHT)
+	hostsLookup := make(map[peer.ID]host.Host)
+	for i, dht := range dhts {
+		id := hosts[i].ID()
+		ids[i] = id
+		dhtLookup[id] = dht
+		hostsLookup[id] = hosts[i]
+	}
+
+	glog.Infof("id0: %v", peer.IDHexEncode(ids[0]))
+	ids = kb.SortClosestPeers(ids, kb.ConvertPeerID(ids[0]))
+	//Connect 9 with 6-8
+	for i := 6; i < 9; i++ {
+		connect(t, ctx, dhtLookup[ids[9]], dhtLookup[ids[i]], hostsLookup[ids[9]], hostsLookup[ids[i]])
+	}
+	//Connect 6 with 3-5
+	for i := 3; i < 6; i++ {
+		connect(t, ctx, dhtLookup[ids[6]], dhtLookup[ids[i]], hostsLookup[ids[6]], hostsLookup[ids[i]])
+	}
+	//Connect 3 with 0-2
+	for i := 0; i < 3; i++ {
+		connect(t, ctx, dhtLookup[ids[3]], dhtLookup[ids[i]], hostsLookup[ids[3]], hostsLookup[ids[i]])
+	}
+
+	for _, id := range ids {
+		ps := hostsLookup[id].Peerstore().Peers()
+		pstr := ""
+		for _, p := range ps {
+			pstr = fmt.Sprintf("%v, %v", pstr, peer.IDHexEncode(p))
+		}
+		// glog.Infof("ID: %v, Addrs: %v, Peers: %v", peer.IDHexEncode(id), hostsLookup[id].Addrs(), pstr)
+		glog.Infof("ID: %v, Peers: %v", peer.IDHexEncode(id), pstr)
+	}
+	nodes := make([]*BasicVideoNetwork, 10, 10)
+	for i, id := range ids {
+		n_tmp := newNode(id, dhtLookup[id], hostsLookup[id])
+		n, _ := NewBasicVideoNetwork(n_tmp)
+		nodes[i] = n
+		if i != 0 {
+			go n.SetupProtocol()
+		}
+	}
+
+	strmID := fmt.Sprintf("%v%v", nodes[0].GetNodeID(), "strmID")
+	hostsLookup[ids[0]].SetStreamHandler(Protocol, func(s net.Stream) {
+		ws := NewBasicStream(s)
+		var msg Msg
+		err := ws.ReceiveMessage(&msg)
+		if err != nil {
+			t.Errorf("Error receiving msg: %v", err)
+		}
+		glog.Infof("n0 got msg: %v", msg)
+		if msg.Op != SubReqID {
+			t.Errorf("Expecting Sub")
+		}
+		ws.SendMessage(StreamDataID, StreamDataMsg{StrmID: strmID, Data: []byte("Hello from n0")})
+	})
+
+	glog.Infof("Sending Sub from %v, StrmID: %v", peer.IDHexEncode(nodes[0].NetworkNode.Identity), strmID)
+	sub, err := nodes[9].GetSubscriber(strmID)
+	if err != nil {
+		t.Errorf("error: %v", err)
+	}
+	bc := make(chan bool)
+	sub.Subscribe(ctx, func(segNo uint64, data []byte, eof bool) {
+		glog.Infof("n9 got msg: %v", string(data))
+		bc <- true
+	})
+
+	select {
+	case <-bc:
+		//pass
+	}
+}
+
+func newNode(pid peer.ID, dht *kad.IpfsDHT, rHost host.Host) *NetworkNode {
+	streams := make(map[peer.ID]*BasicStream)
+	nn := &NetworkNode{Identity: pid, Kad: dht, PeerHost: rHost, streams: streams}
+	return nn
+}
+
 func TestSubPeerForwardPath(t *testing.T) {
+	// connect(t, ctx, )
 	keys := make([]keyPair, 3)
 	for i := 0; i < 3; i++ {
 		priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
@@ -144,7 +240,8 @@ func TestSubPeerForwardPath(t *testing.T) {
 	})
 
 	//n1 subscribe from n3 - should go through n2 because n3 is not directly reachable from n1
-	s1tmp, _ := n1.GetSubscriber(fmt.Sprintf("%v%v", peer.IDHexEncode(no3.Identity), "strmID"))
+	strmID := fmt.Sprintf("%v%v", peer.IDHexEncode(no3.Identity), "strmID")
+	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
 	s1.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("Got response: %v, %v", seqNo, data)
@@ -370,7 +467,8 @@ func TestSendSubscribe(t *testing.T) {
 		}
 	})
 
-	s1tmp, _ := n1.GetSubscriber("strmID")
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.Identity))
+	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
 	result := make(map[uint64][]byte)
 	lock := &sync.Mutex{}
@@ -395,7 +493,7 @@ func TestSendSubscribe(t *testing.T) {
 		}
 	}
 
-	if subReq.StrmID != "strmID" {
+	if subReq.StrmID != strmID {
 		t.Errorf("Expecting subReq.StrmID to be 'strmID', but got %v", subReq.StrmID)
 	}
 
@@ -426,7 +524,7 @@ func TestSendSubscribe(t *testing.T) {
 		}
 	}
 
-	if cancelMsg.StrmID != "strmID" {
+	if cancelMsg.StrmID != strmID {
 		t.Errorf("Expecting to get cancelMsg with StrmID: 'strmID', but got %v", cancelMsg.StrmID)
 	}
 	if s1.working {
