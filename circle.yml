@@ -6,11 +6,11 @@ dependencies:
     - "$HOME/.go_workspace/"
   override:
     - go get -u github.com/whyrusleeping/gx
-    - cd "$HOME/.go_workplace/src/github.com"
+    - cd "$HOME/.go_workspace/src/github.com"
     - git clone git@github.com:livepeer/go-livepeer-basicnet.git
     - go get github.com/multiformats/go-multicodec
     - go get github.com/jbenet/go-msgio
-    - cd "$HOME/.go_workplace/src/github.com/go-livepeer-basicnet"
+    - cd "$HOME/.go_workspace/src/github.com/go-livepeer-basicnet"
     - gx install
     - mv ../go-livepeer/vendor/github.com/golang/glog ../go-livepeer/vendor/github.com/golang/glog_backup
 
