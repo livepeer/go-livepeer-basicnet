@@ -14,7 +14,7 @@ dependencies:
 #    - mkdir livepeer
 #    - cd livepeer
 #    - git clone git@github.com:livepeer/go-livepeer-basicnet.git
-    - cd go-livepeer-basicnet
+    - cd $HOME/go-livepeer-basicnet
     - gx install
     # - rm -rf /home/ubuntu/go-livepeer-basicnet
     - go get ./...
