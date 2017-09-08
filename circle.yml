@@ -17,6 +17,7 @@ dependencies:
     - git clone git@github.com:livepeer/go-livepeer-basicnet.git
     - cd go-livepeer-basicnet
     - gx install
+    - go get ./...
     - mv ../go-livepeer/vendor/github.com/golang/glog ../go-livepeer/vendor/github.com/golang/glog_backup
 
 test:
