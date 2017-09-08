@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	host "gx/ipfs/QmUwW8jMQDxXhLD2j4EfWqLEMX3MsvyWcWGvJPVDh1aTmu/go-libp2p-host"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 
@@ -42,15 +43,19 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 	}
 
 	//If we don't, send subscribe request, listen for response
-	peerc, err := s.Network.NetworkNode.Kad.GetClosestPeers(ctx, s.StrmID)
-	if err != nil {
-		glog.Errorf("Network Subscribe Error: %v", err)
-		return err
-	}
+	// peerc, err := s.Network.NetworkNode.Kad.GetClosestPeers(ctx, s.StrmID)
+	// if err != nil {
+	// 	glog.Errorf("Network Subscribe Error: %v", err)
+	// 	return err
+	// }
+
+	localPeers := s.Network.NetworkNode.PeerHost.Peerstore().Peers()
+	peers := kb.SortClosestPeers(localPeers, []byte(s.StrmID))
 
 	//We can range over peerc because we know it'll be closed by libp2p
 	//We'll keep track of all the connections on the
-	for p := range peerc {
+	// for p := range peerc {
+	for _, p := range peers {
 		//Question: Where do we close the stream? If we only close on "Unsubscribe", we may leave some streams open...
 		glog.V(5).Infof("New peer from kademlia: %v", peer.IDHexEncode(p))
 		ns := s.Network.NetworkNode.GetStream(p)
@@ -80,7 +85,7 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 		}
 	}
 
-	glog.Errorf("Cannot find any close peers")
+	glog.Errorf("Cannot subscribe from any of the peers: %v", peers)
 	return ErrNoClosePeers
 
 	//Call gotData for every new piece of data

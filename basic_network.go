@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
+	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
@@ -272,60 +273,63 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 	} else {
 		glog.V(5).Infof("Cannot find local broadcaster or relayer for stream: %v.  Creating a local relayer, and forwarding along to the network", subReq.StrmID)
 		ctx := context.Background()
-		peerc, err := nw.NetworkNode.Kad.GetClosestPeers(ctx, subReq.StrmID)
-		if err != nil {
-			glog.Errorf("Error finding closer peer: %v", err)
-			return err
-		}
+
+		localPeers := nw.NetworkNode.PeerHost.Peerstore().Peers()
+		peers := kb.SortClosestPeers(localPeers, []byte(subReq.StrmID))
+		// peerc, err := nw.NetworkNode.Kad.GetClosestPeers(ctx, subReq.StrmID)
+		// if err != nil {
+		// 	glog.Errorf("Error finding closer peer: %v", err)
+		// 	return err
+		// }
 
 		// var upstrmPeer peer.ID
 		//Subscribe from the network
 		//We can range over peerc because we know it'll be closed by libp2p
-		for {
-			select {
-			case p := <-peerc:
-				//Don't send it back to the requesting peer
-				if p == ws.Stream.Conn().RemotePeer() {
+		for _, p := range peers {
+			// select {
+			// case p := <-peerc:
+			//Don't send it back to the requesting peer
+			if p == ws.Stream.Conn().RemotePeer() {
+				continue
+			}
+
+			if p == "" {
+				glog.Errorf("Got empty peer from libp2p")
+				return nil
+			}
+
+			ns := nw.NetworkNode.GetStream(p)
+			if ns != nil {
+				if err := ns.SendMessage(SubReqID, subReq); err != nil {
+					//Question: Do we want to close the stream here?
+					glog.Errorf("Error relaying subReq to %v: %v.", p, err)
 					continue
 				}
 
-				if p == "" {
-					glog.Errorf("Got empty peer from libp2p")
-					return nil
-				}
-
-				ns := nw.NetworkNode.GetStream(p)
-				if ns != nil {
-					if err := ns.SendMessage(SubReqID, subReq); err != nil {
-						//Question: Do we want to close the stream here?
-						glog.Errorf("Error relaying subReq to %v: %v.", p, err)
-						continue
-					}
-
-					//TODO: Figure out when to return from this routine
-					go func() {
-						for {
-							if err := streamHandler(nw, ns); err != nil {
-								glog.Errorf("Error handing stream:%v", err)
-								return
-							}
+				//TODO: Figure out when to return from this routine
+				go func() {
+					for {
+						if err := streamHandler(nw, ns); err != nil {
+							glog.Errorf("Error handing stream:%v", err)
+							return
 						}
-					}()
+					}
+				}()
 
-					//Create a relayer, register the listener
-					r := nw.NewRelayer(subReq.StrmID)
-					r.UpstreamPeer = p
-					lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(p))
-					remotePid := peer.IDHexEncode(ws.Stream.Conn().RemotePeer())
-					r.listeners[remotePid] = ws
-					return nil
-				} else {
-					glog.Errorf("Cannot find stream: %v", peer.IDHexEncode(p))
-				}
-			case <-ctx.Done():
-				glog.Errorf("Didn't find any peer from network")
-				return ErrNoClosePeers
+				//Create a relayer, register the listener
+				r := nw.NewRelayer(subReq.StrmID)
+				r.UpstreamPeer = p
+				lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(p))
+				remotePid := peer.IDHexEncode(ws.Stream.Conn().RemotePeer())
+				r.listeners[remotePid] = ws
+				return nil
+			} else {
+				glog.Errorf("Cannot find stream: %v", peer.IDHexEncode(p))
 			}
+			// case <-ctx.Done():
+			// 	glog.Errorf("Didn't find any peer from network")
+			// 	return ErrNoClosePeers
+			// }
 		}
 	}
 
