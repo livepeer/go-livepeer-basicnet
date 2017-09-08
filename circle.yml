@@ -2,10 +2,7 @@ machine:
   environment:
     GOROOT: /usr/local/go
 
-
-dependencies:
-  cache_directories:
-    - "$HOME/.go_workspace/"
+checkout:
   override:
     - go get -u github.com/whyrusleeping/gx
     - go get -u github.com/whyrusleeping/gx-go
@@ -19,6 +16,11 @@ dependencies:
     - gx install
     - go get ./...
     - mv ../go-livepeer/vendor/github.com/golang/glog ../go-livepeer/vendor/github.com/golang/glog_backup
+
+dependencies:
+  cache_directories:
+    - "$HOME/.go_workspace/"
+  # override:
 
 test:
   override:
