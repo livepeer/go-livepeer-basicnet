@@ -95,10 +95,10 @@ func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching
 	}
 	dhtRouting.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 
-	if err := dhtRouting.Bootstrap(context.Background()); err != nil {
-		glog.Errorf("Error bootstraping dht: %v", err)
-		return nil, err
-	}
+	// if err := dhtRouting.Bootstrap(context.Background()); err != nil {
+	// 	glog.Errorf("Error bootstraping dht: %v", err)
+	// 	return nil, err
+	// }
 	return dhtRouting, nil
 }
 
@@ -131,6 +131,8 @@ func (n *NetworkNode) RefreshStream(pid peer.ID) *BasicStream {
 				err := streamHandler(n.Network, strm)
 				if err != nil {
 					glog.Errorf("Got error handling stream: %v", err)
+					n.Network.NetworkNode.RemoveStream(strm.Stream.Conn().RemotePeer())
+					strm.Stream.Close()
 					return
 				}
 			}
