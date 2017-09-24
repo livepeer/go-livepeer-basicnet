@@ -52,10 +52,10 @@ type BasicVideoNetwork struct {
 	NetworkNode            *NetworkNode
 	broadcasters           map[string]*BasicBroadcaster
 	subscribers            map[string]*BasicSubscriber
-	relayers               map[relayerID]*BasicRelayer
 	mplMap                 map[string]*m3u8.MasterPlaylist
 	mplChans               map[string]chan *m3u8.MasterPlaylist
 	transResponseCallbacks map[string]func(transcodeResult map[string]string)
+	relayers               map[relayerID]*BasicRelayer
 }
 
 func (n *BasicVideoNetwork) String() string {
@@ -232,8 +232,6 @@ func (n *BasicVideoNetwork) getMasterPlaylistWithRelay(strmID string) (chan *m3u
 				continue
 			}
 		}
-
-		glog.Errorf("Cannot find Master playlist from network")
 	}()
 
 	return returnC, nil
@@ -543,43 +541,42 @@ func handleFinishStream(nw *BasicVideoNetwork, fs FinishStreamMsg) error {
 func handleTranscodeResponse(nw *BasicVideoNetwork, ws *BasicStream, tr TranscodeResponseMsg) error {
 	glog.V(5).Infof("Transcode Result StreamIDs: %v", tr)
 	callback, ok := nw.transResponseCallbacks[tr.StrmID]
-	if !ok {
-		//Don't have a local callback.  Forward to a peer
-		peers, err := closestLocalPeers(nw.NetworkNode.PeerHost.Peerstore(), tr.StrmID)
-		if err != nil {
-			return ErrTranscodeResponse
-		}
-
-		dupCount := DefaultTranscodeResponseRelayDuplication
-		for _, p := range peers {
-			//Don't send it back to the requesting peer
-			if p == ws.Stream.Conn().RemotePeer() || p == nw.NetworkNode.Identity {
-				continue
-			}
-
-			if p == "" {
-				glog.Errorf("Got empty peer from libp2p")
-				return nil
-			}
-
-			s := nw.NetworkNode.GetStream(p)
-			if s != nil {
-				if err := s.SendMessage(TranscodeResponseID, tr); err != nil {
-					continue
-				}
-
-				//Don't need to set up a relayer here because we don't expect any response.
-				if dupCount == 0 {
-					return nil
-				}
-			}
-			dupCount--
-		}
-		glog.Info("Only sent to %v peers", DefaultTranscodeResponseRelayDuplication-dupCount)
+	if ok {
+		callback(tr.Result)
 		return nil
 	}
 
-	callback(tr.Result)
+	//Don't have a local callback.  Forward to a peer
+	peers, err := closestLocalPeers(nw.NetworkNode.PeerHost.Peerstore(), tr.StrmID)
+	if err != nil {
+		return ErrTranscodeResponse
+	}
+	dupCount := DefaultTranscodeResponseRelayDuplication
+	for _, p := range peers {
+		//Don't send it back to the requesting peer
+		if p == ws.Stream.Conn().RemotePeer() || p == nw.NetworkNode.Identity {
+			continue
+		}
+
+		if p == "" {
+			glog.Errorf("Got empty peer from libp2p")
+			return nil
+		}
+
+		s := nw.NetworkNode.GetStream(p)
+		if s != nil {
+			if err := s.SendMessage(TranscodeResponseID, tr); err != nil {
+				continue
+			}
+
+			//Don't need to set up a relayer here because we don't expect any response.
+			if dupCount == 0 {
+				return nil
+			}
+		}
+		dupCount--
+	}
+	glog.Info("Cannot relay TranscodeResponse to peers")
 	return nil
 }
 
@@ -687,3 +684,4 @@ type relayerID string
 func relayerMapKey(strmID string, opcode Opcode) relayerID {
 	return relayerID(fmt.Sprintf("%v-%v", opcode, strmID))
 }
+
