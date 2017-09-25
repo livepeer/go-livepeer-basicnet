@@ -112,7 +112,7 @@ func TestABS(t *testing.T) {
 	n3sub2.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub2 got data: %v", string(data))
 	})
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 	n3gotdata := make(chan struct{})
 	n3sub3.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub3 got data: %v", string(data))
