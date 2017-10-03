@@ -21,7 +21,8 @@ import (
 	kad "gx/ipfs/QmeQMs9pr9Goci9xJ1Wo5ZQrknzBZwnmHYWJXA8stQDFMx/go-libp2p-kad-dht"
 
 	"github.com/golang/glog"
-	"github.com/livepeer/go-livepeer/types"
+	lpcommon "github.com/livepeer/go-livepeer/common"
+	lpmscore "github.com/livepeer/lpms/core"
 )
 
 func init() {
@@ -419,34 +420,34 @@ func TestHandleBroadcast(t *testing.T) {
 	//Set up n2 handler so n1 can create a stream to it.
 	n2.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
 		ws := NewBasicStream(s)
-		msg, err := ws.ReceiveMessage()
-		if err != nil {
-			glog.Errorf("Got error decoding msg: %v", err)
-			return
+		for {
+			msg, err := ws.ReceiveMessage()
+			if err != nil {
+				glog.Errorf("Got error decoding msg: %v", err)
+				return
+			}
+			glog.Infof("n2 got msg data: %v", msg)
+			if msg.Op == CancelSubID {
+				cancelMsg = msg.Data.(CancelSubMsg)
+			}
 		}
-		cancelMsg, _ = msg.Data.(CancelSubMsg)
 	})
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.Identity))
 
-	err := handleStreamData(n1, StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
+	err := handleStreamData(n1, StreamDataMsg{SeqNo: 100, StrmID: strmID, Data: []byte("hello")})
 	if err != ErrProtocol {
 		t.Errorf("Expecting error because no subscriber has been assigned")
 	}
 
-	s1tmp, _ := n1.GetSubscriber("strmID")
+	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
-	//Set up the subscriber to handle the streamData
-	ctxW, cancel := context.WithCancel(context.Background())
-	s1.cancelWorker = cancel
-	s1.working = true
-	s1.networkStream = n1.NetworkNode.GetStream(n2.Identity)
 	var seqNoResult uint64
 	var dataResult []byte
-	s1.startWorker(ctxW, n2.Identity, s1.networkStream, func(seqNo uint64, data []byte, eof bool) {
+	s1.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		seqNoResult = seqNo
 		dataResult = data
 	})
-	n1.subscribers["strmID"] = s1
-	err = handleStreamData(n1, StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
+	err = handleStreamData(n1, StreamDataMsg{SeqNo: 100, StrmID: strmID, Data: []byte("hello")})
 	if err != nil {
 		t.Errorf("handleStreamData error: %v", err)
 	}
@@ -470,10 +471,12 @@ func TestHandleBroadcast(t *testing.T) {
 	}
 
 	//Test cancellation
-	s1.cancelWorker()
+	if err := s1.Unsubscribe(); err != nil {
+		t.Errorf("Error unsubscribing: %v", err)
+	}
 	//Wait for cancelMsg to be assigned
 	start = time.Now()
-	for time.Since(start) < 1*time.Second {
+	for time.Since(start) < 2*time.Second {
 		if cancelMsg.StrmID == "" {
 			time.Sleep(time.Millisecond * 100)
 		} else {
@@ -486,7 +489,7 @@ func TestHandleBroadcast(t *testing.T) {
 	if s1.networkStream != nil {
 		t.Errorf("networkStream should be nil, but got: %v", s1.networkStream)
 	}
-	if cancelMsg.StrmID != "strmID" {
+	if cancelMsg.StrmID != strmID {
 		t.Errorf("Expecting cancelMsg.StrmID to be 'strmID' (cancelMsg to be sent because of cancelWorker()), but got %v", cancelMsg.StrmID)
 	}
 }
@@ -564,8 +567,9 @@ func TestSendSubscribe(t *testing.T) {
 		t.Errorf("Subscriber should be working")
 	}
 
-	time.Sleep(time.Millisecond * 1500)
-
+	lpcommon.WaitUntil(time.Second*1, func() bool {
+		return len(result) == 10
+	})
 	if len(result) != 10 {
 		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
 	}
@@ -577,7 +581,9 @@ func TestSendSubscribe(t *testing.T) {
 	}
 
 	//Call cancel
-	s1.cancelWorker()
+	if err := s1.Unsubscribe(); err != nil {
+		t.Errorf("Error unsubscribing: %v", err)
+	}
 	start = time.Now()
 	for time.Since(start) < 2*time.Second {
 		if cancelMsg.StrmID == "" {
@@ -885,18 +891,18 @@ func TestSendTranscodeResponse(t *testing.T) {
 
 	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n3.Identity))
 	//Send the message
-	err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), strmID, map[string]string{"strmid1": types.P240p30fps4x3.Name, "strmid2": types.P360p30fps4x3.Name})
+	err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), strmID, map[string]string{"strmid1": lpmscore.P240p30fps4x3.Name, "strmid2": lpmscore.P360p30fps4x3.Name})
 	if err != nil {
 		t.Errorf("Error sending transcode result: %v", err)
 	}
 	timer := time.NewTimer(time.Second * 3)
 	select {
 	case r := <-rc:
-		if r["strmid1"] != types.P240p30fps4x3.Name {
-			t.Errorf("Expecting %v, got %v", types.P240p30fps4x3.Name, r["strmid1"])
+		if r["strmid1"] != lpmscore.P240p30fps4x3.Name {
+			t.Errorf("Expecting %v, got %v", lpmscore.P240p30fps4x3.Name, r["strmid1"])
 		}
-		if r["strmid2"] != types.P360p30fps4x3.Name {
-			t.Errorf("Expecting %v, got %v", types.P360p30fps4x3.Name, r["strmid2"])
+		if r["strmid2"] != lpmscore.P360p30fps4x3.Name {
+			t.Errorf("Expecting %v, got %v", lpmscore.P360p30fps4x3.Name, r["strmid2"])
 		}
 	case <-timer.C:
 		t.Errorf("Timed out")
