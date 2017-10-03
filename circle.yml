@@ -14,6 +14,7 @@ dependencies:
     - gx install
     - go get github.com/livepeer/go-livepeer-basicnet
     - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/ && git pull
+    - cd $HOME/.go_workspace/src/github.com/livepeer/lpms/ && git pull
 
 test:
   override:
