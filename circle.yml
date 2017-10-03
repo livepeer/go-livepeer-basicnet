@@ -10,7 +10,7 @@ dependencies:
     - go get -u github.com/whyrusleeping/gx-go
     - go get github.com/multiformats/go-multicodec
     - go get github.com/jbenet/go-msgio
-    - go get github.com/livepeer/lpms
+    - go get github.com/livepeer/lpms/cmd/example
     - cd $HOME/go-livepeer-basicnet
     - gx install
     - go get github.com/livepeer/go-livepeer-basicnet
