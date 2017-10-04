@@ -146,17 +146,19 @@ func setupStreamer(n3 *BasicVideoNetwork) (net.Subscriber, net.Subscriber, net.S
 		glog.Infof("n3sub1 got data: %v, %s", seqNo, data)
 		n3sub1gotData <- struct{}{}
 	})
+	time.Sleep(100 * time.Second)
 	n3sub2gotData := make(chan struct{})
 	n3sub2.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub2 got data: %v, %s", seqNo, data)
 		n3sub2gotData <- struct{}{}
 	})
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(100 * time.Second)
 	n3sub3gotdata := make(chan struct{})
 	n3sub3.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub3 got data: %v, %s", seqNo, data)
 		n3sub3gotdata <- struct{}{}
 	})
+	time.Sleep(100 * time.Second)
 	return n3sub1, n3sub3, n3sub3, n3sub1gotData, n3sub2gotData, n3sub3gotdata
 }
 func TestABS(t *testing.T) {
