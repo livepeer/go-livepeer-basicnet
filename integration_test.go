@@ -82,6 +82,7 @@ func setupTranscoder(n2 *BasicVideoNetwork, t *testing.T) (net.Subscriber, net.B
 		glog.Infof("n2 got video data: %v, %s", seqNo, data)
 		glog.Infof("Sending transcoded data: %v", fmt.Sprintf("%strans1", data))
 		n2b1.Broadcast(seqNo, []byte(fmt.Sprintf("%strans1", data)))
+		time.Sleep(time.Millisecond * 500)
 		glog.Infof("Sending transcoded data: %v", fmt.Sprintf("%strans2", data))
 		n2b2.Broadcast(seqNo, []byte(fmt.Sprintf("%strans2", data)))
 		n2gotdata <- struct{}{}
@@ -190,7 +191,7 @@ func TestABS(t *testing.T) {
 	}
 	var sub1gotdata, sub2gotdata, sub3gotdata, n2sub1gotdata bool
 	for sub1gotdata == false || sub2gotdata == false || sub3gotdata == false || n2sub1gotdata == false {
-		timer := time.NewTimer(time.Second * 1)
+		timer := time.NewTimer(time.Second * 5)
 		select {
 		case <-n3sub1gotdata:
 			sub1gotdata = true

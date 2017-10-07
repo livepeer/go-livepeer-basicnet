@@ -1215,7 +1215,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error getting master playlist: %v", err)
 	}
-	timer = time.NewTimer(time.Second * 3)
+	timer = time.NewTimer(time.Second * 5)
 	select {
 	case r := <-mplc:
 		vars := r.Variants
