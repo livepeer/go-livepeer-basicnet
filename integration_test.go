@@ -80,11 +80,11 @@ func setupTranscoder(n2 *BasicVideoNetwork, t *testing.T) (net.Subscriber, net.B
 	n2gotdata := make(chan struct{})
 	sub.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n2 got video data: %v, %s", seqNo, data)
-		n2gotdata <- struct{}{}
 		glog.Infof("Sending transcoded data: %v", fmt.Sprintf("%strans1", data))
 		n2b1.Broadcast(seqNo, []byte(fmt.Sprintf("%strans1", data)))
 		glog.Infof("Sending transcoded data: %v", fmt.Sprintf("%strans2", data))
 		n2b2.Broadcast(seqNo, []byte(fmt.Sprintf("%strans2", data)))
+		n2gotdata <- struct{}{}
 	})
 	return sub, n2b1, n2b2, n2gotdata
 }
@@ -96,7 +96,7 @@ func TestTranscode(t *testing.T) {
 	defer n3.NetworkNode.PeerHost.Close()
 	defer n4.NetworkNode.PeerHost.Close()
 	n1b1 := setupBroadcaster(n1, t)
-	_, _, _, n2gotdata := setupTranscoder(n2, t)
+	_, n2b1, n2b2, n2gotdata := setupTranscoder(n2, t)
 
 	//Wait until n2 gets data, this ensures everything is hooked up.
 	n1b1.Broadcast(0, []byte("test"))
@@ -126,6 +126,12 @@ func TestTranscode(t *testing.T) {
 	if l, ok := n1.broadcasters[strmID1].listeners[n2.GetNodeID()]; !ok {
 		t.Errorf("Expecting listener for n1 broadcaster to be %v, but got %v", n2.GetNodeID(), l)
 	}
+	if n2b1.(*BasicBroadcaster).lastMsgs[2] == nil {
+		t.Errorf("Expecting 1 msg in n2b1, got %v", n2b1.(*BasicBroadcaster).lastMsgs)
+	}
+	if n2b2.(*BasicBroadcaster).lastMsgs[2] == nil {
+		t.Errorf("Expecting 1 msg in n2b2, got %v", n2b2.(*BasicBroadcaster).lastMsgs)
+	}
 }
 
 func setupStreamer(n3 *BasicVideoNetwork) (net.Subscriber, net.Subscriber, net.Subscriber, chan struct{}, chan struct{}, chan struct{}) {
@@ -146,22 +152,21 @@ func setupStreamer(n3 *BasicVideoNetwork) (net.Subscriber, net.Subscriber, net.S
 		glog.Infof("n3sub1 got data: %v, %s", seqNo, data)
 		n3sub1gotData <- struct{}{}
 	})
-	time.Sleep(100 * time.Second)
 	n3sub2gotData := make(chan struct{})
 	n3sub2.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub2 got data: %v, %s", seqNo, data)
 		n3sub2gotData <- struct{}{}
 	})
-	time.Sleep(100 * time.Second)
+	time.Sleep(time.Millisecond * 500)
 	n3sub3gotdata := make(chan struct{})
 	n3sub3.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
 		glog.Infof("n3sub3 got data: %v, %s", seqNo, data)
 		n3sub3gotdata <- struct{}{}
 	})
-	time.Sleep(100 * time.Second)
 	return n3sub1, n3sub3, n3sub3, n3sub1gotData, n3sub2gotData, n3sub3gotdata
 }
 func TestABS(t *testing.T) {
+	fmt.Println("TestABS...")
 	//Set up 3 nodes.  n1=broadcaster, n2=transcoder, n3=subscriber
 	n1, n2, n3, n4 := setupN()
 	defer n1.NetworkNode.PeerHost.Close()
@@ -170,6 +175,7 @@ func TestABS(t *testing.T) {
 	defer n4.NetworkNode.PeerHost.Close()
 	n1b1 := setupBroadcaster(n1, t)
 	_, _, _, n2gotdata := setupTranscoder(n2, t)
+	fmt.Println("After setup transcoder")
 
 	//n3 subscribes to all 3 streams.  We expect:
 	//	1 broadcaster in n1
@@ -179,10 +185,12 @@ func TestABS(t *testing.T) {
 	//	3 subscribers in n3
 	_, _, _, n3sub1gotdata, n3sub2gotdata, n3sub3gotdata := setupStreamer(n3)
 
-	n1b1.Broadcast(0, []byte("seg1"))
+	if err := n1b1.Broadcast(0, []byte("seg1")); err != nil {
+		t.Errorf("Error: %v", err)
+	}
 	var sub1gotdata, sub2gotdata, sub3gotdata, n2sub1gotdata bool
-	for sub1gotdata == false && sub2gotdata == false && sub3gotdata == false && n2sub1gotdata == false {
-		timer := time.NewTimer(time.Millisecond * 500)
+	for sub1gotdata == false || sub2gotdata == false || sub3gotdata == false || n2sub1gotdata == false {
+		timer := time.NewTimer(time.Second * 1)
 		select {
 		case <-n3sub1gotdata:
 			sub1gotdata = true

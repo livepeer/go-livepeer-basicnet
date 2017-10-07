@@ -420,13 +420,14 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 		return nil
 	}
 
-	//If we have a local subscriber (and not a relayer), create a relayer
+	//If we have a local subscriber (and not a relayer), create a relayer (but no need to pass on the sub req)
 	if s := nw.subscribers[subReq.StrmID]; s != nil {
 		remotePeer := ws.Stream.Conn().RemotePeer()
 		r := nw.NewRelayer(subReq.StrmID, SubReqID)
 		r.UpstreamPeer = s.UpstreamPeer
 		lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(remotePeer))
 		r.listeners[peer.IDHexEncode(remotePeer)] = ws
+		return nil
 	}
 
 	//If we don't have local broadcaster, relayer, or a subscriber, forward the sub request to the closest peer

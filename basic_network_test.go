@@ -742,6 +742,28 @@ func TestHandleSubscribe(t *testing.T) {
 	}
 	delete(n1.relayers, relayerMapKey(strmID2, SubReqID))
 
+	//Test local subscriber but no relayer (should create a relayer but not pass on the request)
+	n1.relayers = make(map[relayerID]*BasicRelayer)
+	n1.broadcasters = make(map[string]*BasicBroadcaster)
+	n1.subscribers = make(map[string]*BasicSubscriber)
+	_, err := n1.GetSubscriber(strmID2)
+	if err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	if err := handleSubReq(n1, SubReqMsg{StrmID: strmID2}, ws); err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	timer = time.NewTimer(time.Millisecond * 100)
+	select {
+	case <-n4chan:
+		t.Errorf("Shold not receive a message on n4chan - there is already a subscriber, we should just add a relayer")
+	case <-timer.C:
+		//This is good
+	}
+	if len(n1.relayers) != 1 {
+		t.Errorf("Expect 1 relayer, got %v", n1.relayers)
+	}
+
 	//Test when the broadcaster is remote, and there isn't a relayer yet.
 	//TODO: This is hard to test because of the dependency to kad.IpfsDht.  We can get around it by creating an interface called "NetworkRouting"
 	// handleSubReq(n1, SubReqMsg{StrmID: "strmID"}, ws)
