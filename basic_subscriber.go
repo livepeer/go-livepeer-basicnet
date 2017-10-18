@@ -27,14 +27,15 @@ type BasicSubscriber struct {
 	UpstreamPeer  peer.ID
 	working       bool
 	cancelWorker  context.CancelFunc
+	gotData       func(seqNo uint64, data []byte, eof bool)
 }
 
 //Subscribe kicks off a go routine that calls the gotData func for every new video chunk
 func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint64, data []byte, eof bool)) error {
-	// glog.Infof("s: %v", s)
-	// glog.Infof("s.Network: %v", s.Network)
-	// glog.Infof("s.Network.broadcasters:%v", s.Network.broadcasters)
-
+	if s.gotData != nil {
+		return ErrSubscriber
+	}
+	s.gotData = gotData
 	//Do we already have the broadcaster locally?
 
 	//If we do, just subscribe to it and listen.
@@ -75,18 +76,16 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 			s.working = true
 			s.networkStream = ns
 			s.UpstreamPeer = p
-			s.startWorker(ctxW, p, ns, gotData)
+			s.startWorker(ctxW, p, ns)
 			return nil
 		}
 	}
 
 	glog.Errorf("Cannot subscribe from any of the peers: %v", peers)
 	return ErrNoClosePeers
-
-	//Call gotData for every new piece of data
 }
 
-func (s *BasicSubscriber) startWorker(ctxW context.Context, p peer.ID, ws *BasicStream, gotData func(seqNo uint64, data []byte, eof bool)) {
+func (s *BasicSubscriber) startWorker(ctxW context.Context, p peer.ID, ws *BasicStream) {
 	//We expect DataStreamMsg to come back
 	go func() {
 		for {
@@ -97,17 +96,12 @@ func (s *BasicSubscriber) startWorker(ctxW context.Context, p peer.ID, ws *Basic
 			select {
 			case msg := <-s.msgChan:
 				networkWaitTime := time.Since(start)
-				gotData(msg.SeqNo, msg.Data, false)
+				s.gotData(msg.SeqNo, msg.Data, false)
 				glog.V(common.DEBUG).Infof("Subscriber worker inserted segment: %v - took %v in total, %v waiting for data", msg.SeqNo, time.Since(start), networkWaitTime)
 			case <-ctxW.Done():
 				s.networkStream = nil
 				s.working = false
-				glog.V(4).Infof("Done with subscription, sending CancelSubMsg")
-				//Send EOF
-				gotData(0, nil, true)
-				if err := ws.SendMessage(CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
-					glog.Errorf("Error sending CancelSubMsg during worker cancellation: %v", err)
-				}
+				// glog.V(4).Infof("Done with subscription, sending CancelSubMsg")
 				return
 			}
 		}
@@ -118,6 +112,20 @@ func (s *BasicSubscriber) startWorker(ctxW context.Context, p peer.ID, ws *Basic
 func (s *BasicSubscriber) Unsubscribe() error {
 	if s.cancelWorker != nil {
 		s.cancelWorker()
+	}
+
+	//Send EOF
+	if s.gotData != nil {
+		go s.gotData(0, nil, true)
+	}
+
+	//Send Cancel to upstream peer
+	if s.UpstreamPeer != "" {
+		glog.Infof("Done with subscription, sending CancelSubMsg: strmID: %v", s.StrmID)
+		ws := s.Network.NetworkNode.GetStream(s.UpstreamPeer)
+		if err := ws.SendMessage(CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
+			glog.Errorf("Error sending CancelSubMsg during worker cancellation: %v", err)
+		}
 	}
 
 	//Remove self from network

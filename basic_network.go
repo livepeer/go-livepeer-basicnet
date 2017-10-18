@@ -420,13 +420,14 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 		return nil
 	}
 
-	//If we have a local subscriber (and not a relayer), create a relayer
+	//If we have a local subscriber (and not a relayer), create a relayer (but no need to pass on the sub req)
 	if s := nw.subscribers[subReq.StrmID]; s != nil {
 		remotePeer := ws.Stream.Conn().RemotePeer()
 		r := nw.NewRelayer(subReq.StrmID, SubReqID)
 		r.UpstreamPeer = s.UpstreamPeer
 		lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(remotePeer))
 		r.listeners[peer.IDHexEncode(remotePeer)] = ws
+		return nil
 	}
 
 	//If we don't have local broadcaster, relayer, or a subscriber, forward the sub request to the closest peer
@@ -477,6 +478,9 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, ws *BasicStream) erro
 	return ErrProtocol
 }
 
+//If we have a local broadcaster, remove the listener
+//If we have a relayer, remove the listener.  If the relayer listener count goes to 0, remove the relayer and forward the CancelMsg
+//If we also have a subscriber, don't forward the CancelMsg. (If we ONLY have a subscriber, don't do anything)
 func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) error {
 	if b, ok := nw.broadcasters[cr.StrmID]; ok {
 		//Remove from broadcast listener
@@ -490,15 +494,16 @@ func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) e
 		lpmon.Instance().RemoveRelay(cr.StrmID)
 		//Pass on the cancel req and remove relayer if relayer has no more listeners, unless we still have a subscriber - in which case, just remove the relayer.
 		if len(r.listeners) == 0 {
-			ns := nw.NetworkNode.GetStream(r.UpstreamPeer)
-			if ns != nil {
-				if err := ns.SendMessage(CancelSubID, cr); err != nil {
-					glog.Errorf("Error relaying cancel message to %v: %v ", peer.IDHexEncode(r.UpstreamPeer), err)
-				}
-				return nil
-			}
+			delete(nw.relayers, relayerMapKey(cr.StrmID, SubReqID))
+			//Only forward the Cancel msg if there ISN'T a subscriber
 			if _, ok := nw.subscribers[cr.StrmID]; !ok {
-				delete(nw.relayers, relayerMapKey(cr.StrmID, CancelSubID))
+				ns := nw.NetworkNode.GetStream(r.UpstreamPeer)
+				if ns != nil {
+					if err := ns.SendMessage(CancelSubID, cr); err != nil {
+						glog.Errorf("Error relaying cancel message to %v: %v ", peer.IDHexEncode(r.UpstreamPeer), err)
+					}
+					return nil
+				}
 			}
 		}
 		return nil
