@@ -10,7 +10,7 @@ import (
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	cid "gx/ipfs/QmNp85zy9RLrQ5oQD4hPyS39ezrrXpcaa7R4Y9kxdWQLLQ/go-cid"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	netutil "gx/ipfs/QmQ1bJEsmdEiGfTQRoj6CsshWmAKduAEDEbwzbvk5QT5Ui/go-libp2p-netutil"
+	netutil "gx/ipfs/QmQGX417WoxKxDJeHqouMEmmH4G1RCENNSzkZYHrXy3Xb3/go-libp2p-netutil"
 	"gx/ipfs/QmU9a9NV9RdPNwZQDYd5uKsm6N6LJLSvLbywDDYFbaaC6P/go-multihash"
 	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
 	dssync "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore/sync"
@@ -126,23 +126,21 @@ func simpleNodes(p1, p2 int) (*NetworkNode, *NetworkNode) {
 	return n1, n2
 }
 
-func simpleHandler(ns net.Stream, txt string) {
+func simpleHandler(ns net.Stream, txt string) error {
 	ws := NewBasicStream(ns)
 
 	msg, err := ws.ReceiveMessage()
 
 	if err != nil {
 		glog.Errorf("Got error decoding msg: %v", err)
-		return
+		return err
 	}
 	glog.Infof("%v Got msg: %v", ws.Stream.Conn().LocalPeer().Pretty(), msg)
 	time.Sleep(500 * time.Millisecond)
 
-	str := string(msg.Data.([]byte))
-
-	newMsg := str + "|" + txt
-	glog.Infof("Sending %v", newMsg)
-	ws.SendMessage(0, newMsg)
+	glog.Infof("Sending %v", txt)
+	ws.SendMessage(0, StreamDataMsg{Data: []byte(txt)})
+	return nil
 }
 
 func simpleHandlerLoop(ws *BasicStream, txt string) {
@@ -224,18 +222,31 @@ func TestBasic(t *testing.T) {
 
 	h2.SetStreamHandler(Protocol, func(stream net.Stream) {
 		glog.Infof("h2 handler...")
-		simpleHandler(stream, "pong")
+		for {
+			if err := simpleHandler(stream, "pong"); err != nil {
+				stream.Close()
+				return
+			}
+		}
+		// stream.Close()
 	})
 
-	glog.Infof("Before stream")
 	stream, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
 	if err != nil {
 		glog.Fatal(err)
 	}
-	glog.Infof("After stream")
-
 	s1 := NewBasicStream(stream)
-	s1.SendMessage(0, SimpleMsg{Msg: "ping!"})
+	s1.SendMessage(0, StreamDataMsg{Data: []byte("ping1")})
+	time.Sleep(time.Second * 2)
+
+	// stream2, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
+	// if err != nil {
+	// 	glog.Fatal(err)
+	// }
+	// s2 := NewBasicStream(stream2)
+	s1.SendMessage(0, StreamDataMsg{Data: []byte("ping2")})
+	time.Sleep(time.Millisecond * 100)
+	s1.Stream.Reset()
 	time.Sleep(time.Second * 2)
 }
 

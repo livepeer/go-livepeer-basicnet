@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ericxtang/m3u8"
-
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
 	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
@@ -20,8 +18,10 @@ import (
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 
+	"github.com/ericxtang/m3u8"
+	lpms "github.com/livepeer/lpms/core"
+
 	"github.com/golang/glog"
-	"github.com/livepeer/go-livepeer/types"
 )
 
 func init() {
@@ -885,18 +885,18 @@ func TestSendTranscodeResponse(t *testing.T) {
 
 	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n3.Identity))
 	//Send the message
-	err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), strmID, map[string]string{"strmid1": types.P240p30fps4x3.Name, "strmid2": types.P360p30fps4x3.Name})
+	err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), strmID, map[string]string{"strmid1": lpms.P240p30fps4x3.Name, "strmid2": lpms.P360p30fps4x3.Name})
 	if err != nil {
 		t.Errorf("Error sending transcode result: %v", err)
 	}
 	timer := time.NewTimer(time.Second * 3)
 	select {
 	case r := <-rc:
-		if r["strmid1"] != types.P240p30fps4x3.Name {
-			t.Errorf("Expecting %v, got %v", types.P240p30fps4x3.Name, r["strmid1"])
+		if r["strmid1"] != lpms.P240p30fps4x3.Name {
+			t.Errorf("Expecting %v, got %v", lpms.P240p30fps4x3.Name, r["strmid1"])
 		}
-		if r["strmid2"] != types.P360p30fps4x3.Name {
-			t.Errorf("Expecting %v, got %v", types.P360p30fps4x3.Name, r["strmid2"])
+		if r["strmid2"] != lpms.P360p30fps4x3.Name {
+			t.Errorf("Expecting %v, got %v", lpms.P360p30fps4x3.Name, r["strmid2"])
 		}
 	case <-timer.C:
 		t.Errorf("Timed out")
@@ -928,6 +928,7 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 		n3Chan <- msg.Data.(MasterPlaylistDataMsg)
 	})
 
+	glog.Infof("Case 1...")
 	//Set up n1 without the playlist and with no other peer.  Should send a NotFound.
 	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n1.NetworkNode.Identity))
 	_, ok := n1.mplMap[strmID]
@@ -947,7 +948,8 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 	case <-timer.C:
 		t.Errorf("timed out")
 	}
-	strm.Stream.Close()
+	strm.Stream.Reset()
+	delete(n1.NetworkNode.streams, n3.Identity)
 
 	glog.Infof("Case 2...")
 	//Relay req from n3 to n2 (through n1).  Set up n2 to have a playlist.  n3 should recieve the playlist.
@@ -976,7 +978,8 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 	if len(n1.relayers[relayerMapKey(strmID, GetMasterPlaylistReqID)].listeners) != 1 {
 		t.Errorf("Expecting 1 listener, got %v", n1.relayers[relayerMapKey(strmID, GetMasterPlaylistReqID)].listeners)
 	}
-	strm.Stream.Close()
+	strm.Stream.Reset()
+	delete(n1.NetworkNode.streams, n3.Identity)
 
 	//Send another req for the same stream, make sure the relayer listener increased
 	glog.Infof("Case 3...")
