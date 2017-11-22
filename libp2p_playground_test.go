@@ -136,7 +136,7 @@ func simpleHandler(ns net.Stream, txt string) error {
 		return err
 	}
 	glog.Infof("%v Got msg: %v", ws.Stream.Conn().LocalPeer().Pretty(), msg)
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(100 * time.Millisecond)
 
 	glog.Infof("Sending %v", txt)
 	ws.SendMessage(0, StreamDataMsg{Data: []byte(txt)})
@@ -228,7 +228,6 @@ func TestBasic(t *testing.T) {
 				return
 			}
 		}
-		// stream.Close()
 	})
 
 	stream, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
@@ -237,17 +236,71 @@ func TestBasic(t *testing.T) {
 	}
 	s1 := NewBasicStream(stream)
 	s1.SendMessage(0, StreamDataMsg{Data: []byte("ping1")})
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Millisecond * 200)
 
-	// stream2, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
-	// if err != nil {
-	// 	glog.Fatal(err)
-	// }
-	// s2 := NewBasicStream(stream2)
 	s1.SendMessage(0, StreamDataMsg{Data: []byte("ping2")})
+	time.Sleep(time.Millisecond * 500)
+	s1.Stream.Reset()
+	time.Sleep(time.Millisecond * 100)
+}
+
+func TestUniDirection(t *testing.T) {
+	glog.Infof("\n\nTest Unidirection...")
+	h1 := makeRandomHost(10000)
+	h2 := makeRandomHost(10001)
+	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.PermanentAddrTTL)
+	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.PermanentAddrTTL)
+
+	h2.SetStreamHandler(Protocol, func(stream net.Stream) {
+		glog.Infof("h2 handler...")
+		for {
+			ws := NewBasicStream(stream)
+			msg, err := ws.ReceiveMessage()
+			if err != nil {
+				glog.Errorf("Got error decoding msg: %v", err)
+				return
+			}
+			glog.Infof("%v Got msg: %v", ws.Stream.Conn().LocalPeer().Pretty(), msg)
+		}
+	})
+
+	h1.SetStreamHandler(Protocol, func(stream net.Stream) {
+		glog.Infof("h1 handler...")
+		for {
+			ws := NewBasicStream(stream)
+			msg, err := ws.ReceiveMessage()
+			if err != nil {
+				glog.Errorf("Got error decoding msg: %v", err)
+				return
+			}
+			glog.Infof("%v Got msg: %v", ws.Stream.Conn().LocalPeer().Pretty(), msg)
+		}
+	})
+
+	stream, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
+	if err != nil {
+		glog.Fatal(err)
+	}
+	s1 := NewBasicStream(stream)
+	if err := s1.SendMessage(0, StreamDataMsg{Data: []byte("ping1")}); err != nil {
+		glog.Infof("Error: %v", err)
+	}
+	time.Sleep(time.Millisecond * 100)
+	if err := s1.SendMessage(0, StreamDataMsg{Data: []byte("ping2")}); err != nil {
+		glog.Infof("Error: %v", err)
+	}
 	time.Sleep(time.Millisecond * 100)
 	s1.Stream.Reset()
-	time.Sleep(time.Second * 2)
+
+	stream2, err := h2.NewStream(context.Background(), h1.ID(), Protocol)
+	if err != nil {
+		glog.Fatal(err)
+	}
+	s2 := NewBasicStream(stream2)
+	s2.SendMessage(0, StreamDataMsg{Data: []byte("pong1")})
+	s2.SendMessage(0, StreamDataMsg{Data: []byte("pong2")})
+	time.Sleep(time.Millisecond * 100)
+	s2.Stream.Reset()
 }
 
 func TestProvider(t *testing.T) {
