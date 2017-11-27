@@ -19,7 +19,6 @@ import (
 	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 
 	"github.com/ericxtang/m3u8"
-	common "github.com/livepeer/go-livepeer/common"
 	lpms "github.com/livepeer/lpms/core"
 
 	"github.com/golang/glog"
@@ -597,9 +596,16 @@ func TestSendSubscribe(t *testing.T) {
 		t.Errorf("Subscriber should be working")
 	}
 
-	common.WaitAssert(t, time.Second*1, func() bool {
-		return len(result) == 10
-	}, fmt.Sprintf("Expecting length of result to be 10, but got %v: %v", len(result), result))
+	for start := time.Now(); time.Since(start) < 1*time.Second; {
+		if len(result) == 10 {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 50)
+		}
+	}
+	if len(result) != 10 {
+		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
+	}
 
 	for _, d := range result {
 		if string(d) != "test data" {
@@ -610,9 +616,16 @@ func TestSendSubscribe(t *testing.T) {
 	//Call cancel
 	s1.cancelWorker()
 
-	common.WaitAssert(t, time.Second*1, func() bool {
-		return cancelMsg.StrmID != ""
-	}, fmt.Sprintf("Expecting to get cancelMsg with StrmID: 'strmID', but got %v", cancelMsg.StrmID))
+	for start := time.Now(); time.Since(start) < 1*time.Second; {
+		if cancelMsg.StrmID != "" {
+			break
+		} else {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	if cancelMsg.StrmID != "" {
+		t.Errorf("Expecting to get cancelMsg with StrmID: 'strmID', but got %v", cancelMsg.StrmID)
+	}
 
 	if s1.working {
 		t.Errorf("subscriber shouldn't be working after 'cancel' is called")
