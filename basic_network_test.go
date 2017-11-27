@@ -623,8 +623,8 @@ func TestSendSubscribe(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	if cancelMsg.StrmID != "" {
-		t.Errorf("Expecting to get cancelMsg with StrmID: 'strmID', but got %v", cancelMsg.StrmID)
+	if cancelMsg.StrmID != strmID {
+		t.Errorf("Expecting to get cancelMsg with StrmID: %v, but got %v", strmID, cancelMsg.StrmID)
 	}
 
 	if s1.working {
