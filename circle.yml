@@ -12,7 +12,7 @@ dependencies:
     # - go get github.com/jbenet/go-msgio
     - gx-go get github.com/livepeer/go-livepeer-basicnet
     - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer-basicnet && gx install
-    - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/ && rm -rf vendor && go get ./...
+    - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer/ && git pull && rm -rf vendor && go get ./...
 
 test:
   override:
