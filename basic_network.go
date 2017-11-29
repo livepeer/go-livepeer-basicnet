@@ -433,7 +433,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 	peers, err := closestLocalPeers(nw.NetworkNode.PeerHost.Peerstore(), subReq.StrmID)
 	if err != nil {
 		glog.Errorf("Error getting closest local node: %v", err)
-		return nil
+		return ErrHandleMsg
 	}
 
 	//Send Sub Req to the network
