@@ -135,36 +135,14 @@ func TestStream(t *testing.T) {
 		t.Errorf("Expecting stream to be there")
 	}
 
-	//Now cause a problem - say use a bad ID
+	//Now cause a problem - use a bad ID (Cannot cancel a stream that doesn't exist)
 	if err := s12.SendMessage(CancelSubID, SubReqMsg{StrmID: strmID2}); err != nil {
 		t.Errorf("Error: %v", err)
 	}
-	start := time.Now()
-	for time.Since(start) < time.Second {
-		if len(n2.NetworkNode.outStreams) > 0 {
-			time.Sleep(time.Millisecond * 100)
-		}
-	}
-	n1.NetworkNode.outStreamsLock.RLock()
-	if _, ok := n2.NetworkNode.outStreams[n1.NetworkNode.Identity]; ok {
-		t.Errorf("Expecting stream to not be there")
-	}
-	n1.NetworkNode.outStreamsLock.RUnlock()
 
-	n1.NetworkNode.outStreamsLock.RLock()
-	if _, ok := n1.NetworkNode.outStreams[n2.NetworkNode.Identity]; ok {
-		t.Errorf("Expecting stream to not be there")
-	}
-	n1.NetworkNode.outStreamsLock.RUnlock()
-
-	//Shouldn't be able to use the old stream anymore
-	if err := s21.SendMessage(SubReqID, SubReqMsg{StrmID: strmID1}); err == nil {
-		t.Errorf("Expecting error, but got none")
-	}
-	//Should still be able to send stream if we recreate the stream
-	s21 = n2.NetworkNode.GetStream(n1.NetworkNode.Identity)
+	//Should still be able to use the old stream
 	if err := s21.SendMessage(SubReqID, SubReqMsg{StrmID: strmID1}); err != nil {
-		t.Errorf("Error: %v", err)
+		t.Errorf("Expecting to not get an error, but got: %v", err)
 	}
 }
 
@@ -448,8 +426,8 @@ func TestHandleBroadcast(t *testing.T) {
 
 	//Error case - subscriber is not set yet.
 	err := handleStreamData(n1, n2.Identity, StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
-	if err != ErrProtocol {
-		t.Errorf("Expecting error because no subscriber has been assigned")
+	if err != ErrHandleMsg {
+		t.Errorf("Expecting error because no subscriber has been assigned, got %v", err)
 	}
 
 	s1tmp, _ := n1.GetSubscriber("strmID")
@@ -1062,8 +1040,8 @@ func TestHandleMasterPlaylistData(t *testing.T) {
 		t.Errorf("Expecting to not have the playlist")
 	}
 	err := handleMasterPlaylistDataMsg(n1, MasterPlaylistDataMsg{StrmID: strmID, NotFound: true})
-	if err != ErrHandleMasterPlaylist {
-		t.Errorf("Expecting ErrHandleMasterPlaylist, got: %v", err)
+	if err != ErrHandleMsg {
+		t.Errorf("Expecting ErrHandleMsg, got: %v", err)
 	}
 
 	//Set up a relayer, make sure it's relaying to the right destination
