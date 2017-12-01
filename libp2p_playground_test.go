@@ -289,6 +289,8 @@ func TestUniDirection(t *testing.T) {
 		}
 	})
 
+	time.Sleep(time.Millisecond * 50)
+
 	stream, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
 	if err != nil {
 		glog.Fatal(err)
