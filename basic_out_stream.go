@@ -31,7 +31,7 @@ func NewBasicOutStream(s net.Stream) *BasicOutStream {
 	// This is where we pick our specific multicodec. In order to change the
 	// codec, we only need to change this place.
 	// See https://godoc.org/github.com/multiformats/go-multicodec/json
-	enc := mcjson.Multicodec(false).Encoder(writer)
+	enc := mcjson.Multicodec(true).Encoder(writer)
 
 	return &BasicOutStream{
 		Stream: s,

@@ -901,8 +901,6 @@ func TestSendTranscodeResponse(t *testing.T) {
 			if err != nil {
 				t.Errorf("Error sending transcode result: %v", err)
 			}
-			glog.Infof("sent i: %v", i)
-			time.Sleep(10 * time.Millisecond) //I hate this sleep, but things don't work without it.  Fille https://github.com/libp2p/go-libp2p/issues/250.
 		}
 	}()
 

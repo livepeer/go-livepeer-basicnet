@@ -343,61 +343,53 @@ func TestProvider(t *testing.T) {
 	}
 }
 
-// func TestConcurrentSend(t *testing.T) {
-// 	n1, n2 := simpleNodes(15000, 15001)
-// 	n3, _ := simpleNodes(15002, 15003)
-// 	connectHosts(n1.PeerHost, n2.PeerHost)
-// 	connectHosts(n2.PeerHost, n3.PeerHost)
-// 	n1.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
-// 	})
-// 	c := make(chan string, 20)
-// 	n2.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
-// 		// strm := NewBasicInStream(stream)
-// 		defer stream.Reset()
-// 		for {
-// 			// if msg, err := strm.ReceiveMessage(); err != nil {
-// 			// 	glog.Infof("Error: %v", err)
-// 			// 	break
-// 			// } else {
-// 			// 	c <- string(msg.Data.(StreamDataMsg).Data)
-// 			// }
-// 			bytes := make([]byte, 500)
-// 			if _, err := stream.Read(bytes); err != nil {
-// 				glog.Infof("Error: %v", err)
-// 				break
-// 			}
-// 			c <- string(bytes)
-// 		}
-// 	})
-// 	n3.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
-// 	})
+func TestConcurrentSend(t *testing.T) {
+	n1, n2 := simpleNodes(15000, 15001)
+	n3, _ := simpleNodes(15002, 15003)
+	connectHosts(n1.PeerHost, n2.PeerHost)
+	connectHosts(n2.PeerHost, n3.PeerHost)
+	n1.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
+	})
+	c := make(chan string, 20)
+	n2.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
+		strm := NewBasicInStream(stream)
+		defer stream.Reset()
+		for {
+			if msg, err := strm.ReceiveMessage(); err != nil {
+				glog.Infof("Error: %v", err)
+				break
+			} else {
+				c <- string(msg.Data.(StreamDataMsg).Data)
+			}
+		}
+	})
+	n3.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
+	})
 
-// 	go func() {
-// 		for i := 0; i < 10; i++ {
-// 			strm := n1.GetOutStream(n2.Identity)
-// 			strm.SendMessage(StreamDataID, StreamDataMsg{Data: []byte(fmt.Sprintf("%v", i))})
-// 			time.Sleep(time.Millisecond * 2) //The 2ms is here because without it there seems to be a bug
-// 			// strm.Stream.Write([]byte(fmt.Sprintf("%v\n", i)))
-// 		}
-// 	}()
+	go func() {
+		for i := 0; i < 10; i++ {
+			strm := n1.GetOutStream(n2.Identity)
+			strm.SendMessage(StreamDataID, StreamDataMsg{Data: []byte(fmt.Sprintf("%v", i))})
+		}
+	}()
 
-// 	// go func() {
-// 	// 	for i := 100; i < 200; i++ {
-// 	// 		strm := n3.GetOutStream(n2.Identity)
-// 	// 		strm.Stream.Write([]byte(fmt.Sprintf("%v\n", i)))
-// 	// 		// strm.SendMessage(StreamDataID, StreamDataMsg{Data: []byte(fmt.Sprintf("%v", i))})
-// 	// 		// time.Sleep(time.Millisecond * 2)
-// 	// 	}
-// 	// }()
-// 	for i := 0; i < 10; i++ {
-// 		select {
-// 		case i := <-c:
-// 			fmt.Printf("got %v\n", i)
-// 		case <-time.After(5 * time.Second):
-// 			t.Errorf("Timed out")
-// 		}
-// 	}
-// }
+	go func() {
+		for i := 10; i < 20; i++ {
+			strm := n3.GetOutStream(n2.Identity)
+			strm.SendMessage(StreamDataID, StreamDataMsg{Data: []byte(fmt.Sprintf("%v", i))})
+			// time.Sleep(time.Millisecond * 2)
+		}
+	}()
+
+	for i := 0; i < 20; i++ {
+		select {
+		case i := <-c:
+			fmt.Printf("got %v\n", i)
+		case <-time.After(5 * time.Second):
+			t.Errorf("Timed out")
+		}
+	}
+}
 
 // func TestCid(t *testing.T) {
 // 	ctx := context.Background()
