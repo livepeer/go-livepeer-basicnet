@@ -289,7 +289,7 @@ func TestUniDirection(t *testing.T) {
 		}
 	})
 
-	time.Sleep(time.Millisecond * 50)
+	time.Sleep(time.Millisecond * 500)
 
 	stream, err := h1.NewStream(context.Background(), h2.ID(), Protocol)
 	if err != nil {
