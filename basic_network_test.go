@@ -124,7 +124,7 @@ func TestConnectFile(t *testing.T) {
 	}
 
 	// // Synchronization is a problem for consistency here, let's skip the file writing test for now
-	time.Sleep(3 * time.Second)
+	// time.Sleep(3 * time.Second)
 	// f, _ := ioutil.ReadFile(fmt.Sprintf("%v/conn", wd))
 	// lines := make([]string, 0)
 	// for _, l := range strings.Split(string(f), "\n") {
@@ -136,7 +136,7 @@ func TestConnectFile(t *testing.T) {
 	// 	t.Errorf("Expecting 3 peer connections in conn file, got %v", lines)
 	// }
 
-	// os.Remove(fmt.Sprintf("%v/conn", wd))
+	os.Remove(fmt.Sprintf("%v/conn", wd))
 }
 
 func TestReconnect(t *testing.T) {

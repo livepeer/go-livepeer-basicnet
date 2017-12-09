@@ -88,7 +88,9 @@ func NewBasicVideoNetwork(n *NetworkNode, workDir string) (*BasicVideoNetwork, e
 		for _, p := range peers {
 			nw.connectPeerInfo(p)
 		}
-		go peerCache.Record(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
+		go peerCache.Record(ctx)
+		defer cancel()
 	}
 	return nw, nil
 }
