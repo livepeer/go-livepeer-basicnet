@@ -13,6 +13,7 @@ dependencies:
     - go get github.com/ericxtang/m3u8
     - gx-go get github.com/livepeer/go-livepeer-basicnet
     - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer-basicnet && gx install
+    - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer && git pull
 
 test:
   override:
