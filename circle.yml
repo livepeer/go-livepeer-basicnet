@@ -13,6 +13,7 @@ dependencies:
     - gx-go get github.com/livepeer/go-livepeer-basicnet
     - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer && git pull
     - go get -d github.com/livepeer/lpms/cmd/example
+    - cd $HOME/.go_workspace/src/github.com/livepeer/lpms && git pull
     - cd $HOME/.go_workspace/src/github.com/livepeer/go-livepeer-basicnet && gx install
 
 test:
