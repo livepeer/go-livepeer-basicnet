@@ -45,9 +45,12 @@ func main() {
 func pingtest(init bool, node *basicnet.NetworkNode, pid peer.ID) {
 	if init {
 		timer = time.Now()
-		strm := node.GetOutStream(pid)
+		strm := node.GetStream(pid)
 		glog.Infof("Sending message")
 		strm.SendMessage(basicnet.SimpleString, "")
+		for {
+			streamHandler(strm)
+		}
 	} else {
 		setHandler(node)
 		glog.Infof("Done setting handler")
@@ -58,10 +61,10 @@ func pingtest(init bool, node *basicnet.NetworkNode, pid peer.ID) {
 
 func setHandler(n *basicnet.NetworkNode) {
 	n.PeerHost.SetStreamHandler(basicnet.Protocol, func(stream net.Stream) {
-		ws := basicnet.NewBasicInStream(stream)
+		ws := basicnet.NewBasicStream(stream)
 
 		for {
-			if err := streamHandler(ws, n); err != nil {
+			if err := streamHandler(ws); err != nil {
 				glog.Errorf("Error handling stream: %v", err)
 				// delete(n.NetworkNode.streams, stream.Conn().RemotePeer())
 				stream.Close()
@@ -71,7 +74,7 @@ func setHandler(n *basicnet.NetworkNode) {
 	})
 }
 
-func streamHandler(ws *basicnet.BasicInStream, n *basicnet.NetworkNode) error {
+func streamHandler(ws *basicnet.BasicStream) error {
 	msg, err := ws.ReceiveMessage()
 	if err != nil {
 		glog.Errorf("Got error decoding msg: %v", err)
@@ -83,5 +86,5 @@ func streamHandler(ws *basicnet.BasicInStream, n *basicnet.NetworkNode) error {
 
 	timer = time.Now()
 	vid, _ := ioutil.ReadFile("./test.ts")
-	return n.GetOutStream(ws.Stream.Conn().RemotePeer()).SendMessage(basicnet.StreamDataID, basicnet.StreamDataMsg{Data: vid, SeqNo: 0, StrmID: "test"})
+	return ws.SendMessage(basicnet.StreamDataID, basicnet.StreamDataMsg{Data: vid, SeqNo: 0, StrmID: "test"})
 }

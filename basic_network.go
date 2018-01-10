@@ -27,6 +27,7 @@ import (
 	"github.com/livepeer/go-livepeer/common"
 	lpmon "github.com/livepeer/go-livepeer/monitor"
 	lpnet "github.com/livepeer/go-livepeer/net"
+	"github.com/livepeer/lpms/stream"
 )
 
 var Protocol = protocol.ID("/livepeer_video/0.0.1")
@@ -44,6 +45,7 @@ const RelayTicker = 10 * time.Second
 const DefaultBroadcasterBufferSize = 3
 const DefaultBroadcasterBufferSegSendInterval = time.Second
 const DefaultTranscodeResponseRelayDuplication = 2
+const ConnTimeout = 3 * time.Second
 
 var ConnFileWriteFreq = time.Duration(60) * time.Second
 
@@ -71,6 +73,17 @@ func (n *BasicVideoNetwork) String() string {
 	return fmt.Sprintf("\n\nbroadcasters:%v\n\nsubscribers:%v\n\nrelayers:%v\n\npeers:%v\n\nmasterPlaylists:%v\n\n", n.broadcasters, n.subscribers, n.relayers, peers, n.mplMap)
 }
 
+func (n *BasicVideoNetwork) GetLocalStreams() []string {
+	result := make([]string, 0)
+	for strmID, _ := range n.broadcasters {
+		result = append(result, strmID)
+	}
+	for strmID, _ := range n.subscribers {
+		result = append(result, strmID)
+	}
+	return result
+}
+
 //NewBasicVideoNetwork creates a libp2p node, handle the basic (push-based) video protocol.
 func NewBasicVideoNetwork(n *NetworkNode, workDir string) (*BasicVideoNetwork, error) {
 	nw := &BasicVideoNetwork{
@@ -89,6 +102,7 @@ func NewBasicVideoNetwork(n *NetworkNode, workDir string) (*BasicVideoNetwork, e
 		peerCache := NewPeerCache(n.PeerHost.Peerstore(), fmt.Sprintf("%v/conn", workDir))
 		peers := peerCache.LoadPeers()
 		for _, p := range peers {
+			glog.Infof("Connecting to cached peer: %v", p)
 			nw.connectPeerInfo(p)
 		}
 		go peerCache.Record(context.Background())
@@ -102,14 +116,14 @@ func (n *BasicVideoNetwork) GetNodeID() string {
 }
 
 //GetBroadcaster gets a broadcaster for a streamID.  If it doesn't exist, create a new one.
-func (n *BasicVideoNetwork) GetBroadcaster(strmID string) (lpnet.Broadcaster, error) {
+func (n *BasicVideoNetwork) GetBroadcaster(strmID string) (stream.Broadcaster, error) {
 	b, ok := n.broadcasters[strmID]
 	if !ok {
 		b = &BasicBroadcaster{
 			Network:   n,
 			StrmID:    strmID,
 			q:         make(chan *StreamDataMsg),
-			listeners: make(map[string]*BasicOutStream),
+			listeners: make(map[string]OutStream),
 			lastMsgs:  make([]*StreamDataMsg, DefaultBroadcasterBufferSize, DefaultBroadcasterBufferSize)}
 
 		n.broadcasters[strmID] = b
@@ -123,7 +137,7 @@ func (n *BasicVideoNetwork) SetBroadcaster(strmID string, b *BasicBroadcaster) {
 }
 
 //GetSubscriber gets a subscriber for a streamID.  If it doesn't exist, create a new one.
-func (n *BasicVideoNetwork) GetSubscriber(strmID string) (lpnet.Subscriber, error) {
+func (n *BasicVideoNetwork) GetSubscriber(strmID string) (stream.Subscriber, error) {
 	s, ok := n.subscribers[strmID]
 	if !ok {
 		s = &BasicSubscriber{Network: n, StrmID: strmID, host: n.NetworkNode.PeerHost, msgChan: make(chan StreamDataMsg)}
@@ -188,7 +202,8 @@ func (n *BasicVideoNetwork) Connect(nodeID string, addrs []string) error {
 }
 
 func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
-	if err := n.NetworkNode.PeerHost.Connect(context.Background(), info); err == nil {
+	ctx, _ := context.WithTimeout(context.Background(), ConnTimeout)
+	if err := n.NetworkNode.PeerHost.Connect(ctx, info); err == nil {
 		n.NetworkNode.PeerHost.Peerstore().AddAddrs(info.ID, info.Addrs, peerstore.PermanentAddrTTL)
 		return nil
 	} else {
@@ -199,6 +214,12 @@ func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
 
 //SendTranscodeResponse tsends the transcode result to the broadcast node.
 func (n *BasicVideoNetwork) SendTranscodeResponse(broadcaster string, strmID string, transcodedVideos map[string]string) error {
+	//Don't do anything if the node is the transcoder and the broadcaster at the same time.
+	if n.GetNodeID() == broadcaster {
+		glog.Infof("CurrentNode: %v, broadcaster: %v", n.GetNodeID(), broadcaster)
+		return nil
+	}
+
 	peers, err := closestLocalPeers(n.NetworkNode.PeerHost.Peerstore(), strmID)
 	if err != nil {
 		glog.Errorf("Error getting closest local peers: %v", err)
@@ -473,7 +494,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert SubReqMsg: %v", msg.Data)
 			return ErrProtocol
 		}
-		err := handleStreamData(nw, ws.Stream.Conn().RemotePeer(), sd)
+		err := handleStreamData(nw, ws.Stream.Conn().RemotePeer(), &sd)
 		if err == ErrProtocol {
 			glog.Errorf("Got protocol error, but ignoring it for now")
 			return nil
@@ -536,7 +557,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 	if b := nw.broadcasters[subReq.StrmID]; b != nil {
 		glog.V(5).Infof("Handling subReq, adding listener %v to broadcaster", peer.IDHexEncode(remotePID))
 		//TODO: Add verification code for the SubNodeID (Make sure the message is not spoofed)
-		b.AddListener(nw, remotePID)
+		b.AddListeningPeer(nw, remotePID)
 
 		//Send the last video chunk so we don't have to wait for the next one.
 		for _, msg := range b.lastMsgs {
@@ -640,20 +661,13 @@ func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) e
 	}
 }
 
-func handleStreamData(nw *BasicVideoNetwork, remotePID peer.ID, sd StreamDataMsg) error {
+func handleStreamData(nw *BasicVideoNetwork, remotePID peer.ID, sd *StreamDataMsg) error {
 	//A node can have a subscriber AND a relayer for the same stream.
 	s := nw.getSubscriber(sd.StrmID)
 	if s != nil {
-		ctx, _ := context.WithTimeout(context.Background(), SubscriberDataInsertTimeout)
-		start := time.Now()
-		go func() {
-			select {
-			case s.msgChan <- sd:
-				glog.V(4).Infof("Data segment %v for %v inserted. (%v)", sd.SeqNo, sd.StrmID, time.Since(start))
-			case <-ctx.Done():
-				glog.Errorf("Subscriber data insert done for stream: %v - %v", sd.StrmID, ctx.Err())
-			}
-		}()
+		if err := s.InsertData(sd); err != nil {
+			glog.Errorf("Error inserting data into subscriber: %v", err)
+		}
 	}
 
 	r := nw.relayers[relayerMapKey(sd.StrmID, SubReqID)]
@@ -704,6 +718,15 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, remotePID peer.ID, tr Transc
 		return nil
 	}
 
+	//If we are suppose to be the broadcasting node, don't need to forward the message.
+	nid, err := extractNodeID(tr.StrmID)
+	if err != nil {
+		return ErrHandleMsg
+	}
+	if peer.IDHexEncode(nid) == nw.GetNodeID() {
+		return nil
+	}
+
 	//Don't have a local callback.  Forward to a peer
 	peers, err := closestLocalPeers(nw.NetworkNode.PeerHost.Peerstore(), tr.StrmID)
 	if err != nil {
@@ -744,6 +767,13 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, remotePID peer.ID, tr Transc
 func handleGetMasterPlaylistReq(nw *BasicVideoNetwork, remotePID peer.ID, mplr GetMasterPlaylistReqMsg) error {
 	mpl, ok := nw.mplMap[mplr.ManifestID]
 	if !ok {
+		//This IS the node. If we can't find it here, we can't find it anywhere. (NEW YORK NEW YORK)
+		if nid, err := extractNodeID(mplr.ManifestID); err == nil {
+			if peer.IDHexEncode(nid) == nw.GetNodeID() {
+				return nw.NetworkNode.GetOutStream(remotePID).SendMessage(MasterPlaylistDataID, MasterPlaylistDataMsg{ManifestID: mplr.ManifestID, NotFound: true})
+			}
+		}
+
 		//Don't have the playlist locally. Forward to a peer
 		peers, err := closestLocalPeers(nw.NetworkNode.PeerHost.Peerstore(), mplr.ManifestID)
 		if err != nil {

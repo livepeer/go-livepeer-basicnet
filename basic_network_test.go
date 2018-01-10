@@ -424,7 +424,7 @@ func TestHandleBroadcast(t *testing.T) {
 	})
 
 	//Error case - subscriber is not set yet.
-	err := handleStreamData(n1, n2.Identity, StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
+	err := handleStreamData(n1, n2.Identity, &StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
 	if err != ErrHandleMsg {
 		t.Errorf("Expecting error because no subscriber has been assigned, got %v", err)
 	}
@@ -439,7 +439,7 @@ func TestHandleBroadcast(t *testing.T) {
 	var seqNoResult uint64
 	var dataResult []byte
 	s1GotMsgChan := make(chan struct{})
-	s1.startWorker(ctxW, n2.Identity, outStrm, func(seqNo uint64, data []byte, eof bool) {
+	s1.startWorker(ctxW, outStrm, func(seqNo uint64, data []byte, eof bool) {
 		seqNoResult = seqNo
 		dataResult = data
 		s1GotMsgChan <- struct{}{}
@@ -449,7 +449,7 @@ func TestHandleBroadcast(t *testing.T) {
 	go func() {
 		for {
 			if n1.getSubscriber("strmID") != nil {
-				err = handleStreamData(n1, n2.Identity, StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
+				err = handleStreamData(n1, n2.Identity, &StreamDataMsg{SeqNo: 100, StrmID: "strmID", Data: []byte("hello")})
 				if err != nil {
 					t.Errorf("handleStreamData error: %v", err)
 				}
@@ -617,7 +617,7 @@ func TestHandleCancel(t *testing.T) {
 	nid2, _ := peer.IDHexDecode("1220fd6156923c7138dc1b4388ab59a3eb0631c4e673499d35d47f1af32f2c92de66")
 	//Put a broadcaster with a single listener in the node, make sure cancel removes the listener
 	strmID1 := "strmID1"
-	b := &BasicBroadcaster{listeners: map[string]*BasicOutStream{peer.IDHexEncode(nid1): nil}}
+	b := &BasicBroadcaster{listeners: map[string]OutStream{peer.IDHexEncode(nid1): nil}}
 	n1.broadcasters[strmID1] = b
 	if err := handleCancelSubReq(n1, CancelSubMsg{StrmID: strmID1}, nid1); err != nil {
 		t.Errorf("Error handling req: %v", err)
