@@ -4,12 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"reflect"
-	"sort"
-	"sync"
-	"testing"
-	"time"
-
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
 	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
@@ -17,10 +11,13 @@ import (
 	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
+	"reflect"
+	"sort"
+	"sync"
+	"testing"
+	"time"
 
 	"github.com/ericxtang/m3u8"
-	lpms "github.com/livepeer/lpms/core"
-
 	"github.com/golang/glog"
 )
 
@@ -897,7 +894,7 @@ func TestSendTranscodeResponse(t *testing.T) {
 	//Send the message
 	go func() {
 		for i := 0; i < 3; i++ {
-			err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), fmt.Sprintf("%v:%v", strmID, i), map[string]string{"strmid1": lpms.P240p30fps4x3.Name, "strmid2": lpms.P360p30fps4x3.Name})
+			err := n1.SendTranscodeResponse(peer.IDHexEncode(n3.Identity), fmt.Sprintf("%v:%v", strmID, i), map[string]string{"strmid1": "P240p30fps4x3", "strmid2": "P360p30fps4x3"})
 			if err != nil {
 				t.Errorf("Error sending transcode result: %v", err)
 			}
@@ -907,11 +904,11 @@ func TestSendTranscodeResponse(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		select {
 		case r := <-rc:
-			if r["strmid1"] != lpms.P240p30fps4x3.Name {
-				t.Errorf("Expecting %v, got %v", lpms.P240p30fps4x3.Name, r["strmid1"])
+			if r["strmid1"] != "P240p30fps4x3" {
+				t.Errorf("Expecting %v, got %v", "P240p30fps4x3", r["strmid1"])
 			}
-			if r["strmid2"] != lpms.P360p30fps4x3.Name {
-				t.Errorf("Expecting %v, got %v", lpms.P360p30fps4x3.Name, r["strmid2"])
+			if r["strmid2"] != "P360p30fps4x3" {
+				t.Errorf("Expecting %v, got %v", "P360p30fps4x3", r["strmid2"])
 			}
 		case <-time.After(time.Second * 5):
 			t.Errorf("Timed out")
