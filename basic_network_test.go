@@ -48,14 +48,9 @@ func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwor
 
 func connectHosts(h1, h2 host.Host) {
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.PermanentAddrTTL)
-	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.PermanentAddrTTL)
 	err := h1.Connect(context.Background(), peerstore.PeerInfo{ID: h2.ID()})
 	if err != nil {
 		glog.Errorf("Cannot connect h1 with h2: %v", err)
-	}
-	err = h2.Connect(context.Background(), peerstore.PeerInfo{ID: h1.ID()})
-	if err != nil {
-		glog.Errorf("Cannot connect h2 with h1: %v", err)
 	}
 
 	// Connection might not be formed right away under high load.  See https://github.com/libp2p/go-libp2p-kad-dht/blob/master/dht_test.go (func connect)
@@ -1126,7 +1121,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	mpl := m3u8.NewMasterPlaylist()
 	pl, _ := m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n1.NetworkNode.Identity))
+	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n2.NetworkNode.Identity))
 
 	//n2 Updates Playlist
 	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
@@ -1161,7 +1156,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	mpl = m3u8.NewMasterPlaylist()
 	pl, _ = m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test2.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n1.NetworkNode.Identity))
+	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n2.NetworkNode.Identity))
 	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
 		t.Errorf("Error updating master playlist: %v", err)
 	}
@@ -1193,7 +1188,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	mpl = m3u8.NewMasterPlaylist()
 	pl, _ = m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test3.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n1.NetworkNode.Identity))
+	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n3.NetworkNode.Identity))
 	if err := n3.UpdateMasterPlaylist(strmID, mpl); err != nil {
 		t.Errorf("Error updating master playlist: %v", err)
 	}

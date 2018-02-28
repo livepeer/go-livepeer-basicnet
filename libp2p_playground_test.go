@@ -260,9 +260,9 @@ func TestBasic(t *testing.T) {
 
 func TestUniDirection(t *testing.T) {
 	glog.Infof("\n\nTest Unidirection...")
-	dht1, h1 := makeRandomHost(10000)
+	dht1, h1 := makeRandomHost(10002)
 	defer h1.Close()
-	dht2, h2 := makeRandomHost(10001)
+	dht2, h2 := makeRandomHost(10003)
 	defer h2.Close()
 	connect(t, context.Background(), dht1, dht2, h1, h2)
 
