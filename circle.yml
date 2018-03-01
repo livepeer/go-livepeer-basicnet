@@ -10,6 +10,10 @@ dependencies:
     - bash ./install_ffmpeg.sh
   cache_directories:
     - "$HOME/.go_workspace/"
+    - "$HOME/nasm"
+    - "$HOME/x264"
+    - "$HOME/ffmpeg"
+    - "$HOME/compiled"
   override:
     - go get -u github.com/whyrusleeping/gx
     - go get -u github.com/whyrusleeping/gx-go
