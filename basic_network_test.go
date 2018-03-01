@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	kad "gx/ipfs/QmVSep2WwKcXxMonPASsAJ3nZVjfVMKgMcaSigxKnUWpJv/go-libp2p-kad-dht"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 	"reflect"
 	"sort"
 	"sync"
@@ -46,15 +46,17 @@ func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwor
 	return n1, n2
 }
 
-func connectHosts(h1, h2 host.Host) {
+func connectHosts(h1, h2 host.Host) bool {
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.PermanentAddrTTL)
 	err := h1.Connect(context.Background(), peerstore.PeerInfo{ID: h2.ID()})
 	if err != nil {
 		glog.Errorf("Cannot connect h1 with h2: %v", err)
+		return false
 	}
 
 	// Connection might not be formed right away under high load.  See https://github.com/libp2p/go-libp2p-kad-dht/blob/master/dht_test.go (func connect)
 	time.Sleep(time.Millisecond * 100)
+	return true
 }
 
 type keyPair struct {
@@ -919,7 +921,7 @@ func TestSendTranscodeResponse(t *testing.T) {
 	// }
 }
 
-func TestHandleGetMasterPlaylist(t *testing.T) {
+func TestMasterPlaylistGet(t *testing.T) {
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := simpleNodes(15003, 15004)
 	connectHosts(n1.NetworkNode.PeerHost, n3.PeerHost)
@@ -1014,7 +1016,8 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 	}
 }
 
-func TestHandleMasterPlaylistData(t *testing.T) {
+func TestMasterPlaylistData(t *testing.T) {
+	glog.Infof("\n\nTesting handle master playlist data")
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := simpleNodes(15003, 15004)
 	connectHosts(n1.NetworkNode.PeerHost, n3.PeerHost)
@@ -1097,120 +1100,6 @@ func TestHandleMasterPlaylistData(t *testing.T) {
 			t.Errorf("Expecting %v, got %v", pl, mplstr)
 		}
 	case <-timer.C:
-		t.Errorf("Timed out")
-	}
-}
-
-func TestMasterPlaylistIntegration(t *testing.T) {
-	glog.Infof("\n\nTesting handle master playlist")
-	n1, n3 := setupNodes(t, 15000, 15001)
-
-	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ := NewBasicVideoNetwork(no2, "")
-	if err := n2.SetupProtocol(); err != nil {
-		t.Errorf("Error: %v", err)
-	}
-	defer n1.NetworkNode.PeerHost.Close()
-	defer n2.NetworkNode.PeerHost.Close()
-	defer n3.NetworkNode.PeerHost.Close()
-
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-
-	//Create Playlist
-	mpl := m3u8.NewMasterPlaylist()
-	pl, _ := m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n2.NetworkNode.Identity))
-
-	//n2 Updates Playlist
-	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist")
-	}
-
-	//n1 Gets Playlist
-	mplc, err := n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	timer := time.NewTimer(time.Second * 3)
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-	case <-timer.C:
-		glog.Infof("n2 mplMap: %v", n2.mplMap)
-		t.Errorf("Timed out")
-	}
-
-	//Close down n2, recreate n2 (this could happen when n2 temporarily loses connectivity)
-	n2.NetworkNode.PeerHost.Close()
-	no2, _ = NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ = NewBasicVideoNetwork(no2, "")
-	go n2.SetupProtocol()
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-
-	//Create Playlist should still work
-	mpl = m3u8.NewMasterPlaylist()
-	pl, _ = m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test2.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n2.NetworkNode.Identity))
-	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist: %v", err)
-	}
-
-	//Get Playlist should still work
-	mplc, err = n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	timer = time.NewTimer(time.Second * 3)
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-		if r.Variants[0].URI != "test2.m3u8" {
-			t.Errorf("Expecting test2.m3u8, got %v", r.Variants[0].URI)
-		}
-	case <-timer.C:
-		t.Errorf("Timed out")
-	}
-
-	//Add a new node in the network
-	connectHosts(n2.NetworkNode.PeerHost, n3.NetworkNode.PeerHost)
-	go n3.SetupProtocol()
-
-	//Create a playlist on n3, make sure n2 is relaying and n1 can still get the playlist
-	mpl = m3u8.NewMasterPlaylist()
-	pl, _ = m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test3.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n3.NetworkNode.Identity))
-	if err := n3.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist: %v", err)
-	}
-
-	//Get Playlist should still work
-	mplc, err = n1.GetMasterPlaylist("", strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-		if r.Variants[0].URI != "test3.m3u8" {
-			t.Errorf("Expecting test3.m3u8, got %v", r.Variants[0].URI)
-		}
-		if len(n2.relayers) != 1 {
-			t.Errorf("Expecting 1 relayer in n2")
-		}
-	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 }
