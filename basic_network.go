@@ -599,8 +599,10 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 		return ErrHandleMsg
 	}
 
+	peersStr := make([]string, 0)
 	//Send Sub Req to the network
 	for _, p := range peers {
+		peersStr = append(peersStr, peer.IDHexEncode(p))
 		//Don't send it back to the requesting peer
 		if p == remotePID || p == nw.NetworkNode.Identity {
 			continue
@@ -634,7 +636,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 		}
 	}
 
-	glog.Errorf("%v Cannot forward Sub req to any of the peers: %v", nw.GetNodeID(), peers)
+	glog.Errorf("%v Cannot forward Sub req to any of the peers: %v", nw.GetNodeID(), peersStr)
 	return ErrHandleMsg
 }
 

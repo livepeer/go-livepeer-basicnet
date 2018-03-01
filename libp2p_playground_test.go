@@ -110,9 +110,32 @@ func connect(t *testing.T, ctx context.Context, a, b *kad.IpfsDHT, ah, bh host.H
 	}
 }
 
+var PubKeys map[int]crypto.PubKey = make(map[int]crypto.PubKey)
+var PrivKeys map[int]crypto.PrivKey = make(map[int]crypto.PrivKey)
+
 func simpleNodes(p1, p2 int) (*NetworkNode, *NetworkNode) {
-	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	var pub1, pub2 crypto.PubKey
+	var priv1, priv2 crypto.PrivKey
+
+	if _, ok := PubKeys[p1]; ok {
+		pub1 = PubKeys[p1]
+		priv1 = PrivKeys[p1]
+	} else {
+		priv1, pub1, _ = crypto.GenerateKeyPair(crypto.RSA, 2048)
+		PubKeys[p1] = pub1
+		PrivKeys[p1] = priv1
+	}
+
+	if _, ok := PubKeys[p2]; ok {
+		pub2 = PubKeys[p2]
+		priv2 = PrivKeys[p2]
+	} else {
+		priv2, pub2, _ = crypto.GenerateKeyPair(crypto.RSA, 2048)
+		PubKeys[p2] = pub2
+		PrivKeys[p2] = priv2
+	}
+	// priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	// priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 
 	n1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
 	n2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
