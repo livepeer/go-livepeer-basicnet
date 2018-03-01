@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	kad "gx/ipfs/QmVSep2WwKcXxMonPASsAJ3nZVjfVMKgMcaSigxKnUWpJv/go-libp2p-kad-dht"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 	"reflect"
 	"sort"
 	"sync"
@@ -29,15 +29,12 @@ func init() {
 }
 
 func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwork) {
-	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
+	no1, no2 := simpleNodes(p1, p2)
 	n1, _ := NewBasicVideoNetwork(no1, "")
 	if err := n1.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
 	}
 
-	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
 	n2, _ := NewBasicVideoNetwork(no2, "")
 	if err := n2.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
@@ -46,20 +43,24 @@ func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwor
 	return n1, n2
 }
 
-func connectHosts(h1, h2 host.Host) {
+func connectHosts(h1, h2 host.Host) bool {
+	//This seems redundant, but we want to make sure the peer tables of each host knows about the other host.
 	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.PermanentAddrTTL)
 	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.PermanentAddrTTL)
 	err := h1.Connect(context.Background(), peerstore.PeerInfo{ID: h2.ID()})
 	if err != nil {
 		glog.Errorf("Cannot connect h1 with h2: %v", err)
+		return false
 	}
 	err = h2.Connect(context.Background(), peerstore.PeerInfo{ID: h1.ID()})
 	if err != nil {
-		glog.Errorf("Cannot connect h2 with h1: %v", err)
+		glog.Errorf("Cannot connect h1 with h2: %v", err)
+		return false
 	}
 
 	// Connection might not be formed right away under high load.  See https://github.com/libp2p/go-libp2p-kad-dht/blob/master/dht_test.go (func connect)
 	time.Sleep(time.Millisecond * 100)
+	return true
 }
 
 type keyPair struct {
@@ -72,7 +73,6 @@ func TestReconnect(t *testing.T) {
 	n1, n2 := setupNodes(t, 15000, 15001)
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	defer n1.NetworkNode.PeerHost.Close()
-	defer n2.NetworkNode.PeerHost.Close()
 
 	//Send a message, it should work
 	s := n2.NetworkNode.GetOutStream(n1.NetworkNode.Identity)
@@ -89,6 +89,7 @@ func TestReconnect(t *testing.T) {
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 	no2, _ := NewNode(15001, priv2, pub2, &BasicNotifiee{})
 	n2, _ = NewBasicVideoNetwork(no2, "")
+	defer n2.NetworkNode.PeerHost.Close()
 	go n2.SetupProtocol()
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 	s = n2.NetworkNode.GetOutStream(n1.NetworkNode.Identity)
@@ -553,7 +554,7 @@ func TestSendSubscribe(t *testing.T) {
 
 	//Wait until the result var is assigned
 	start := time.Now()
-	for time.Since(start) < 1*time.Second {
+	for time.Since(start) < 3*time.Second {
 		if subReq.StrmID == "" {
 			time.Sleep(time.Millisecond * 100)
 		} else {
@@ -651,33 +652,33 @@ func TestHandleCancel(t *testing.T) {
 
 func TestHandleSubscribe(t *testing.T) {
 	glog.Infof("\n\nTesting Handle Subscribe...")
-	n1, n3 := setupNodes(t, 15000, 15001)
-	n2, n4 := simpleNodes(15002, 15003)
+	n1, n2 := setupNodes(t, 15000, 15001)
+	n3, n4 := simpleNodes(15002, 15003)
 	defer n1.NetworkNode.PeerHost.Close()
-	defer n3.NetworkNode.PeerHost.Close()
-	defer n2.PeerHost.Close()
+	defer n2.NetworkNode.PeerHost.Close()
+	defer n3.PeerHost.Close()
 	defer n4.PeerHost.Close()
-	connectHosts(n1.NetworkNode.PeerHost, n2.PeerHost)
+	connectHosts(n1.NetworkNode.PeerHost, n3.PeerHost)
 	connectHosts(n1.NetworkNode.PeerHost, n4.PeerHost)
 
-	n2chan := make(chan string)
-	n2.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
-		defer s.Close()
+	n3chan := make(chan string)
+	n3.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
+		// defer s.Close()
 		ws := NewBasicInStream(s)
 		for {
 			msg, err := ws.ReceiveMessage()
 			if err != nil {
-				glog.Errorf("N2 Got error decoding msg: %v", err)
+				glog.Errorf("N3 Got error decoding msg: %v", err)
 				return
 			}
 			// glog.Infof("Got msg: %v", msg)
-			n2chan <- msg.Data.(StreamDataMsg).StrmID
+			n3chan <- msg.Data.(StreamDataMsg).StrmID
 		}
 	})
 
 	n4chan := make(chan string)
 	n4.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
-		defer s.Close()
+		// defer s.Close()
 		ws := NewBasicInStream(s)
 		for {
 			msg, err := ws.ReceiveMessage()
@@ -691,27 +692,27 @@ func TestHandleSubscribe(t *testing.T) {
 		}
 	})
 
-	//Test when the broadcaster is local (n2 should get a stream data back because n1 sends the last msg immediately)
+	//Test when the broadcaster is local (n3 should get a stream data back because n1 sends the last msg immediately)
 	strmID := fmt.Sprintf("%vStrmID", n1.GetNodeID())
 	b1tmp, _ := n1.GetBroadcaster(strmID)
 	b1, _ := b1tmp.(*BasicBroadcaster)
 	b1.lastMsgs = []*StreamDataMsg{&StreamDataMsg{SeqNo: 0, StrmID: strmID, Data: []byte("hello")}}
 	n1.broadcasters[strmID] = b1
-	ws := n1.NetworkNode.GetOutStream(n2.Identity)
-	if err := handleSubReq(n1, SubReqMsg{StrmID: strmID}, n2.Identity); err != nil {
+	ws := n1.NetworkNode.GetOutStream(n3.Identity)
+	if err := handleSubReq(n1, SubReqMsg{StrmID: strmID}, n3.Identity); err != nil {
 		t.Errorf("Error handling sub req: %v", err)
 	}
 
-	l := b1.listeners[peer.IDHexEncode(n2.Identity)]
+	l := b1.listeners[peer.IDHexEncode(n3.Identity)]
 	if l == nil || reflect.TypeOf(l) != reflect.TypeOf(&BasicOutStream{}) {
 		t.Errorf("Expecting l to be assigned a BasicOutStream, but got :%v", reflect.TypeOf(l))
 	}
 
 	timer := time.NewTimer(time.Second)
 	select {
-	case n2ID := <-n2chan:
-		if n2ID != strmID {
-			t.Errorf("Expecting %v, got %v", strmID, n2ID)
+	case n3ID := <-n3chan:
+		if n3ID != strmID {
+			t.Errorf("Expecting %v, got %v", strmID, n3ID)
 		}
 	case <-timer.C:
 		t.Errorf("Timed out")
@@ -727,8 +728,8 @@ func TestHandleSubscribe(t *testing.T) {
 	if n1.relayers[relayerMapKey(strmID2, SubReqID)] != r1 {
 		t.Errorf("Should have assigned relayer")
 	}
-	ws = n1.NetworkNode.GetOutStream(n2.Identity)
-	if err := handleSubReq(n1, SubReqMsg{StrmID: strmID2}, n2.Identity); err != nil {
+	ws = n1.NetworkNode.GetOutStream(n3.Identity)
+	if err := handleSubReq(n1, SubReqMsg{StrmID: strmID2}, n3.Identity); err != nil {
 		t.Errorf("Error handling sub req: %v", err)
 	}
 	pid := peer.IDHexEncode(ws.Stream.Conn().RemotePeer())
@@ -747,7 +748,6 @@ func TestHandleSubscribe(t *testing.T) {
 	//Test when the broadcaster is remote, and there isn't a relayer yet.
 	//TODO: This is hard to test because of the dependency to kad.IpfsDht.  We can get around it by creating an interface called "NetworkRouting"
 	// handleSubReq(n1, SubReqMsg{StrmID: "strmID"}, ws)
-
 }
 
 func simpleRelayHandler(ws *BasicInStream, t *testing.T) Msg {
@@ -759,6 +759,7 @@ func simpleRelayHandler(ws *BasicInStream, t *testing.T) Msg {
 	return msg
 }
 func TestRelaying(t *testing.T) {
+	glog.Infof("\n\nTesting Relaying")
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := simpleNodes(15002, 15003)
 	defer n1.NetworkNode.PeerHost.Close()
@@ -766,8 +767,15 @@ func TestRelaying(t *testing.T) {
 	defer n3.PeerHost.Close()
 	defer n4.PeerHost.Close()
 
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-	connectHosts(n2.NetworkNode.PeerHost, n3.PeerHost)
+	if connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost) == false {
+		t.Errorf("Error connecting n1 and n2")
+	}
+	if connectHosts(n2.NetworkNode.PeerHost, n1.NetworkNode.PeerHost) == false {
+		t.Errorf("Error connecting n1 and n2")
+	}
+	if connectHosts(n2.NetworkNode.PeerHost, n3.PeerHost) == false {
+		t.Errorf("Error connecting n2 and n3")
+	}
 
 	strmID := peer.IDHexEncode(n1.NetworkNode.Identity) + "strmID"
 	b1, _ := n1.GetBroadcaster(strmID)
@@ -800,6 +808,10 @@ func TestRelaying(t *testing.T) {
 	})
 
 	time.Sleep(time.Second * 1)
+	if _, ok := n2.relayers[relayerMapKey(strmID, SubReqID)]; !ok {
+		t.Errorf("Expecting relayer to be created on n2")
+	}
+
 	err := b1.Broadcast(100, []byte("test data"))
 	if err != nil {
 		t.Errorf("Error broadcasting: %v", err)
@@ -924,9 +936,10 @@ func TestSendTranscodeResponse(t *testing.T) {
 	// }
 }
 
-func TestHandleGetMasterPlaylist(t *testing.T) {
+func TestMasterPlaylistGet(t *testing.T) {
+	glog.Infof("\n\nTesting Get Master Playlist")
 	n1, n2 := setupNodes(t, 15000, 15001)
-	n3, n4 := simpleNodes(15003, 15004)
+	n3, n4 := simpleNodes(15002, 15003)
 	connectHosts(n1.NetworkNode.PeerHost, n3.PeerHost)
 	defer n1.NetworkNode.PeerHost.Close()
 	defer n2.NetworkNode.PeerHost.Close()
@@ -1019,7 +1032,8 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 	}
 }
 
-func TestHandleMasterPlaylistData(t *testing.T) {
+func TestMasterPlaylistData(t *testing.T) {
+	glog.Infof("\n\nTesting handle master playlist data")
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := simpleNodes(15003, 15004)
 	connectHosts(n1.NetworkNode.PeerHost, n3.PeerHost)
@@ -1102,120 +1116,6 @@ func TestHandleMasterPlaylistData(t *testing.T) {
 			t.Errorf("Expecting %v, got %v", pl, mplstr)
 		}
 	case <-timer.C:
-		t.Errorf("Timed out")
-	}
-}
-
-func TestMasterPlaylistIntegration(t *testing.T) {
-	glog.Infof("\n\nTesting handle master playlist")
-	n1, n3 := setupNodes(t, 15000, 15001)
-
-	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ := NewBasicVideoNetwork(no2, "")
-	if err := n2.SetupProtocol(); err != nil {
-		t.Errorf("Error: %v", err)
-	}
-	defer n1.NetworkNode.PeerHost.Close()
-	defer n2.NetworkNode.PeerHost.Close()
-	defer n3.NetworkNode.PeerHost.Close()
-
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-
-	//Create Playlist
-	mpl := m3u8.NewMasterPlaylist()
-	pl, _ := m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n1.NetworkNode.Identity))
-
-	//n2 Updates Playlist
-	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist")
-	}
-
-	//n1 Gets Playlist
-	mplc, err := n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	timer := time.NewTimer(time.Second * 3)
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-	case <-timer.C:
-		glog.Infof("n2 mplMap: %v", n2.mplMap)
-		t.Errorf("Timed out")
-	}
-
-	//Close down n2, recreate n2 (this could happen when n2 temporarily loses connectivity)
-	n2.NetworkNode.PeerHost.Close()
-	no2, _ = NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ = NewBasicVideoNetwork(no2, "")
-	go n2.SetupProtocol()
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-
-	//Create Playlist should still work
-	mpl = m3u8.NewMasterPlaylist()
-	pl, _ = m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test2.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n1.NetworkNode.Identity))
-	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist: %v", err)
-	}
-
-	//Get Playlist should still work
-	mplc, err = n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	timer = time.NewTimer(time.Second * 3)
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-		if r.Variants[0].URI != "test2.m3u8" {
-			t.Errorf("Expecting test2.m3u8, got %v", r.Variants[0].URI)
-		}
-	case <-timer.C:
-		t.Errorf("Timed out")
-	}
-
-	//Add a new node in the network
-	connectHosts(n2.NetworkNode.PeerHost, n3.NetworkNode.PeerHost)
-	go n3.SetupProtocol()
-
-	//Create a playlist on n3, make sure n2 is relaying and n1 can still get the playlist
-	mpl = m3u8.NewMasterPlaylist()
-	pl, _ = m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test3.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n1.NetworkNode.Identity))
-	if err := n3.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist: %v", err)
-	}
-
-	//Get Playlist should still work
-	mplc, err = n1.GetMasterPlaylist("", strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-		if r.Variants[0].URI != "test3.m3u8" {
-			t.Errorf("Expecting test3.m3u8, got %v", r.Variants[0].URI)
-		}
-		if len(n2.relayers) != 1 {
-			t.Errorf("Expecting 1 relayer in n2")
-		}
-	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 }

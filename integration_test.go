@@ -3,14 +3,141 @@ package basicnet
 import (
 	"context"
 	"fmt"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
+	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	"testing"
 	"time"
 
+	"github.com/ericxtang/m3u8"
 	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/common"
 )
 
-func TestRestream(t *testing.T) {
+func TestIntegrationMasterPlaylist(t *testing.T) {
+	glog.Infof("\n\nMaster playlist integration test")
+	n1, n3 := setupNodes(t, 15005, 15006)
+
+	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	no2, _ := NewNode(15007, priv, pub, &BasicNotifiee{})
+	n2, _ := NewBasicVideoNetwork(no2, "")
+	if err := n2.SetupProtocol(); err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	defer n1.NetworkNode.PeerHost.Close()
+	// defer n2.NetworkNode.PeerHost.Close()
+	defer n3.NetworkNode.PeerHost.Close()
+
+	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
+
+	//Create Playlist
+	mpl := m3u8.NewMasterPlaylist()
+	pl, _ := m3u8.NewMediaPlaylist(10, 10)
+	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
+	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n2.NetworkNode.Identity))
+
+	//n2 Updates Playlist
+	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
+		t.Errorf("Error updating master playlist")
+	}
+
+	//n1 Gets Playlist
+	mplc, err := n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
+	if err != nil {
+		t.Errorf("Error getting master playlist: %v", err)
+	}
+	select {
+	case r := <-mplc:
+		vars := r.Variants
+		if len(vars) != 1 {
+			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
+		}
+	case <-time.After(time.Second * 5):
+		glog.Infof("n2 mplMap: %v", n2.mplMap)
+		t.Errorf("Timed out")
+	}
+
+	glog.Infof("Testing reconnection...")
+	//Close down n2, recreate as n4 (this could happen when n2 temporarily loses connectivity)
+	n2.NetworkNode.PeerHost.Close()
+	no4, _ := NewNode(15007, priv, pub, &BasicNotifiee{})
+	n4, _ := NewBasicVideoNetwork(no4, "")
+	defer n4.NetworkNode.PeerHost.Close()
+	if err := n4.SetupProtocol(); err != nil {
+		t.Errorf("Error: %v", err)
+	}
+	connectHosts(n1.NetworkNode.PeerHost, n4.NetworkNode.PeerHost)
+	glog.Infof("Finished reconnection...")
+
+	//Create Playlist should still work
+	mpl = m3u8.NewMasterPlaylist()
+	pl, _ = m3u8.NewMediaPlaylist(10, 10)
+	mpl.Append("test2.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
+	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n4.NetworkNode.Identity))
+	if err := n4.UpdateMasterPlaylist(strmID, mpl); err != nil {
+		t.Errorf("Error updating master playlist: %v", err)
+	}
+
+	//Get Playlist should still work
+	mplc, err = n1.GetMasterPlaylist("", strmID)
+	if err != nil {
+		t.Errorf("Error getting master playlist: %v", err)
+	}
+	select {
+	case r := <-mplc:
+		vars := r.Variants
+		if len(vars) != 1 {
+			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
+		}
+		if r.Variants[0].URI != "test2.m3u8" {
+			t.Errorf("Expecting test2.m3u8, got %v", r.Variants[0].URI)
+		}
+	case <-time.After(time.Second * 5):
+		t.Errorf("Timed out")
+	}
+
+	glog.Infof("Testing n3")
+	//Add a new node in the network
+	connectHosts(n4.NetworkNode.PeerHost, n3.NetworkNode.PeerHost)
+	if err := n3.SetupProtocol(); err != nil {
+		glog.Errorf("Error setting up protocol for n3")
+	}
+	glog.Infof("n3 protocol initialized")
+
+	//Create a playlist on n3, make sure n4 is relaying and n1 can still get the playlist
+	mpl = m3u8.NewMasterPlaylist()
+	pl, _ = m3u8.NewMediaPlaylist(10, 10)
+	mpl.Append("test3.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
+	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n3.NetworkNode.Identity))
+	if err := n3.UpdateMasterPlaylist(strmID, mpl); err != nil {
+		t.Errorf("Error updating master playlist: %v", err)
+	}
+
+	//Get Playlist should still work
+	glog.Infof("Getting playlist from n3")
+	mplc, err = n1.GetMasterPlaylist("", strmID)
+	if err != nil {
+		t.Errorf("Error getting master playlist: %v", err)
+	}
+	select {
+	case r := <-mplc:
+		vars := r.Variants
+		if len(vars) != 1 {
+			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
+		}
+		if r.Variants[0].URI != "test3.m3u8" {
+			t.Errorf("Expecting test3.m3u8, got %v", r.Variants[0].URI)
+		}
+		if len(n4.relayers) != 1 {
+			t.Errorf("Expecting 1 relayer in n4")
+		}
+	case <-time.After(time.Second * 5):
+		t.Errorf("Timed out")
+	}
+	glog.Infof("Test Finished...")
+}
+
+func TestIntegrationRestream(t *testing.T) {
+	glog.Infof("Restream Integration Test...")
 	n1, n2 := setupNodes(t, 15000, 15001)
 	defer n1.NetworkNode.PeerHost.Close()
 	defer n2.NetworkNode.PeerHost.Close()
@@ -60,7 +187,7 @@ func TestRestream(t *testing.T) {
 	select {
 	case <-subChan:
 		//Success!
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 
@@ -73,7 +200,7 @@ func TestRestream(t *testing.T) {
 	select {
 	case <-subEofChan:
 		//Success!
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 
@@ -113,15 +240,15 @@ func TestRestream(t *testing.T) {
 	select {
 	case <-sub2Chan:
 		//Success!
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 
 	n1b2.Finish()
 	select {
 	case <-sub2EofChan:
-		//Success!
-	case <-time.After(time.Second):
+	//Success!
+	case <-time.After(time.Second * 5):
 		t.Errorf("Timed out")
 	}
 }

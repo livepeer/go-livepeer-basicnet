@@ -7,22 +7,21 @@ import (
 	"testing"
 	"time"
 
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	cid "gx/ipfs/QmNp85zy9RLrQ5oQD4hPyS39ezrrXpcaa7R4Y9kxdWQLLQ/go-cid"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	netutil "gx/ipfs/QmQGX417WoxKxDJeHqouMEmmH4G1RCENNSzkZYHrXy3Xb3/go-libp2p-netutil"
-	"gx/ipfs/QmU9a9NV9RdPNwZQDYd5uKsm6N6LJLSvLbywDDYFbaaC6P/go-multihash"
-	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
-	dssync "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore/sync"
-	swarm "gx/ipfs/QmWpJ4y2vxJ6GZpPfQbpVpQxAYS3UeR6AKNbAHxw7wN3qw/go-libp2p-swarm"
-	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	bhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/basic"
+	rhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/routed"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	ds "gx/ipfs/QmPpegoMqhAEqjncrzArm7KVWAkCm78rqL2DPuNjhPrshg/go-datastore"
+	dssync "gx/ipfs/QmPpegoMqhAEqjncrzArm7KVWAkCm78rqL2DPuNjhPrshg/go-datastore/sync"
+	swarm "gx/ipfs/QmSwZMWwFZSUpe5muU2xgTUwppH24KfMwdPXiwbEp2c6G5/go-libp2p-swarm"
+	kad "gx/ipfs/QmVSep2WwKcXxMonPASsAJ3nZVjfVMKgMcaSigxKnUWpJv/go-libp2p-kad-dht"
+	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	netutil "gx/ipfs/QmYVR3C8DWPHdHxvLtNFYfjsXgaRAdh6hPMNH3KiwCgu4o/go-libp2p-netutil"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
+	"gx/ipfs/QmZyZDi491cCNTLfAhwcaDii2Kg4pwKRkhqQzURGDvY6ua/go-multihash"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	bhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/basic"
-	rhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/routed"
-	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
+	cid "gx/ipfs/QmcZfnkapfECQGcLZaf9B79NRg7cRa9EnZh4LSbkCzwNvY/go-cid"
 
 	"github.com/golang/glog"
 )
@@ -42,13 +41,13 @@ func setupDHT(ctx context.Context, t *testing.T, client bool) (*kad.IpfsDHT, hos
 		d = kad.NewDHT(ctx, h, dss)
 	}
 
-	d.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
-	}
-	d.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
+	// d.Validator["v"] = &record.ValidChecker{
+	// 	Func: func(string, []byte) error {
+	// 		return nil
+	// 	},
+	// 	Sign: false,
+	// }
+	// d.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 	return d, h
 }
 
@@ -111,9 +110,32 @@ func connect(t *testing.T, ctx context.Context, a, b *kad.IpfsDHT, ah, bh host.H
 	}
 }
 
+var PubKeys map[int]crypto.PubKey = make(map[int]crypto.PubKey)
+var PrivKeys map[int]crypto.PrivKey = make(map[int]crypto.PrivKey)
+
 func simpleNodes(p1, p2 int) (*NetworkNode, *NetworkNode) {
-	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	var pub1, pub2 crypto.PubKey
+	var priv1, priv2 crypto.PrivKey
+
+	if _, ok := PubKeys[p1]; ok {
+		pub1 = PubKeys[p1]
+		priv1 = PrivKeys[p1]
+	} else {
+		priv1, pub1, _ = crypto.GenerateKeyPair(crypto.RSA, 2048)
+		PubKeys[p1] = pub1
+		PrivKeys[p1] = priv1
+	}
+
+	if _, ok := PubKeys[p2]; ok {
+		pub2 = PubKeys[p2]
+		priv2 = PrivKeys[p2]
+	} else {
+		priv2, pub2, _ = crypto.GenerateKeyPair(crypto.RSA, 2048)
+		PubKeys[p2] = pub2
+		PrivKeys[p2] = priv2
+	}
+	// priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	// priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 
 	n1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
 	n2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
@@ -225,7 +247,7 @@ func makeRandomHost(port int) (*kad.IpfsDHT, host.Host) {
 	return dht, rHost
 }
 
-func TestBasic(t *testing.T) {
+func TestLibp2pBasic(t *testing.T) {
 	glog.Infof("\n\nTest Basic...")
 	_, h1 := makeRandomHost(10000)
 	defer h1.Close()
@@ -258,11 +280,11 @@ func TestBasic(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 }
 
-func TestUniDirection(t *testing.T) {
+func TestLibp2pUniDirection(t *testing.T) {
 	glog.Infof("\n\nTest Unidirection...")
-	dht1, h1 := makeRandomHost(10000)
+	dht1, h1 := makeRandomHost(10002)
 	defer h1.Close()
-	dht2, h2 := makeRandomHost(10001)
+	dht2, h2 := makeRandomHost(10003)
 	defer h2.Close()
 	connect(t, context.Background(), dht1, dht2, h1, h2)
 
@@ -320,7 +342,8 @@ func TestUniDirection(t *testing.T) {
 	s2.Stream.Reset()
 }
 
-func TestProvider(t *testing.T) {
+func TestLibp2pProvider(t *testing.T) {
+	glog.Infof("\n\nTesting Provider...")
 	n1, n2 := simpleNodes(15010, 15011)
 	defer n1.PeerHost.Close()
 	defer n2.PeerHost.Close()
@@ -352,14 +375,20 @@ func TestProvider(t *testing.T) {
 	}
 }
 
-func TestConcurrentSend(t *testing.T) {
+func TestLibp2pConcurrentSend(t *testing.T) {
+	glog.Infof("\n\nTesting Concurrent Send...")
 	n1, n2 := simpleNodes(15000, 15001)
 	defer n1.PeerHost.Close()
 	defer n2.PeerHost.Close()
-	n3, _ := simpleNodes(15002, 15003)
+	n3, n4 := simpleNodes(15002, 15003)
 	defer n3.PeerHost.Close()
-	connectHosts(n1.PeerHost, n2.PeerHost)
-	connectHosts(n2.PeerHost, n3.PeerHost)
+	defer n4.PeerHost.Close()
+	if connectHosts(n1.PeerHost, n2.PeerHost) == false {
+		glog.Errorf("Cannot connect n1 and n2")
+	}
+	if connectHosts(n2.PeerHost, n3.PeerHost) == false {
+		glog.Errorf("Cannot connect n2 and n3")
+	}
 	n1.PeerHost.SetStreamHandler(Protocol, func(stream net.Stream) {
 	})
 	c := make(chan string, 20)

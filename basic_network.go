@@ -11,16 +11,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	"reflect"
 	"strings"
 	"time"
-
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
 
 	"github.com/ericxtang/m3u8"
 	"github.com/golang/glog"
@@ -212,7 +211,7 @@ func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
 	}
 }
 
-//SendTranscodeResponse tsends the transcode result to the broadcast node.
+//SendTranscodeResponse sends the transcode result to the broadcast node.
 func (n *BasicVideoNetwork) SendTranscodeResponse(broadcaster string, strmID string, transcodedVideos map[string]string) error {
 	//Don't do anything if the node is the transcoder and the broadcaster at the same time.
 	if n.GetNodeID() == broadcaster {
@@ -301,6 +300,15 @@ func (n *BasicVideoNetwork) GetMasterPlaylist(p string, manifestID string) (chan
 		}(returnC, mpl)
 
 		return returnC, nil
+	}
+	nid, err := extractNodeID(manifestID)
+	if err != nil {
+		glog.Errorf("Error extracting NodeID from: %v", manifestID)
+		return nil, ErrGetMasterPlaylist
+	}
+	if n.GetNodeID() == peer.IDHexEncode(nid) {
+		glog.Errorf("Node ID from manifest:%v is the same as the current node ID: %v", peer.IDHexEncode(nid), n.GetNodeID())
+		return nil, ErrGetMasterPlaylist
 	}
 	return n.getMasterPlaylistWithRelay(manifestID)
 }
@@ -591,8 +599,10 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 		return ErrHandleMsg
 	}
 
+	peersStr := make([]string, 0)
 	//Send Sub Req to the network
 	for _, p := range peers {
+		peersStr = append(peersStr, peer.IDHexEncode(p))
 		//Don't send it back to the requesting peer
 		if p == remotePID || p == nw.NetworkNode.Identity {
 			continue
@@ -626,7 +636,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 		}
 	}
 
-	glog.Errorf("%v Cannot forward Sub req to any of the peers: %v", nw.GetNodeID(), peers)
+	glog.Errorf("%v Cannot forward Sub req to any of the peers: %v", nw.GetNodeID(), peersStr)
 	return ErrHandleMsg
 }
 
