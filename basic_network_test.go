@@ -553,7 +553,7 @@ func TestSendSubscribe(t *testing.T) {
 
 	//Wait until the result var is assigned
 	start := time.Now()
-	for time.Since(start) < 1*time.Second {
+	for time.Since(start) < 3*time.Second {
 		if subReq.StrmID == "" {
 			time.Sleep(time.Millisecond * 100)
 		} else {
@@ -1110,13 +1110,6 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	glog.Infof("\n\nTesting handle master playlist")
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := setupNodes(t, 15002, 15003)
-
-	// priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	// no2, _ := NewNode(15003, priv, pub, &BasicNotifiee{})
-	// n2, _ := NewBasicVideoNetwork(no2, "")
-	// if err := n2.SetupProtocol(); err != nil {
-	// 	t.Errorf("Error: %v", err)
-	// }
 	defer n1.NetworkNode.PeerHost.Close()
 	defer n2.NetworkNode.PeerHost.Close()
 	defer n3.NetworkNode.PeerHost.Close()
