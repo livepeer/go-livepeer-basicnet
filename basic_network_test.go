@@ -553,7 +553,7 @@ func TestSendSubscribe(t *testing.T) {
 
 	//Wait until the result var is assigned
 	start := time.Now()
-	for time.Since(start) < 1*time.Second {
+	for time.Since(start) < 3*time.Second {
 		if subReq.StrmID == "" {
 			time.Sleep(time.Millisecond * 100)
 		} else {
@@ -569,7 +569,7 @@ func TestSendSubscribe(t *testing.T) {
 		t.Errorf("Subscriber should be working")
 	}
 
-	for start := time.Now(); time.Since(start) < 1*time.Second; {
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
 		if len(result) == 10 {
 			break
 		} else {
@@ -1108,17 +1108,12 @@ func TestHandleMasterPlaylistData(t *testing.T) {
 
 func TestMasterPlaylistIntegration(t *testing.T) {
 	glog.Infof("\n\nTesting handle master playlist")
-	n1, n3 := setupNodes(t, 15000, 15001)
-
-	priv, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ := NewBasicVideoNetwork(no2, "")
-	if err := n2.SetupProtocol(); err != nil {
-		t.Errorf("Error: %v", err)
-	}
+	n1, n2 := setupNodes(t, 15000, 15001)
+	n3, n4 := setupNodes(t, 15002, 15003)
 	defer n1.NetworkNode.PeerHost.Close()
 	defer n2.NetworkNode.PeerHost.Close()
 	defer n3.NetworkNode.PeerHost.Close()
+	defer n4.NetworkNode.PeerHost.Close()
 
 	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
 
@@ -1126,7 +1121,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	mpl := m3u8.NewMasterPlaylist()
 	pl, _ := m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n1.NetworkNode.Identity))
+	strmID := fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872c", peer.IDHexEncode(n2.NetworkNode.Identity))
 
 	//n2 Updates Playlist
 	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
@@ -1138,50 +1133,14 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error getting master playlist: %v", err)
 	}
-	timer := time.NewTimer(time.Second * 3)
 	select {
 	case r := <-mplc:
 		vars := r.Variants
 		if len(vars) != 1 {
 			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
 		}
-	case <-timer.C:
+	case <-time.After(time.Second * 3):
 		glog.Infof("n2 mplMap: %v", n2.mplMap)
-		t.Errorf("Timed out")
-	}
-
-	//Close down n2, recreate n2 (this could happen when n2 temporarily loses connectivity)
-	n2.NetworkNode.PeerHost.Close()
-	no2, _ = NewNode(15003, priv, pub, &BasicNotifiee{})
-	n2, _ = NewBasicVideoNetwork(no2, "")
-	go n2.SetupProtocol()
-	connectHosts(n1.NetworkNode.PeerHost, n2.NetworkNode.PeerHost)
-
-	//Create Playlist should still work
-	mpl = m3u8.NewMasterPlaylist()
-	pl, _ = m3u8.NewMediaPlaylist(10, 10)
-	mpl.Append("test2.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872d", peer.IDHexEncode(n1.NetworkNode.Identity))
-	if err := n2.UpdateMasterPlaylist(strmID, mpl); err != nil {
-		t.Errorf("Error updating master playlist: %v", err)
-	}
-
-	//Get Playlist should still work
-	mplc, err = n1.GetMasterPlaylist(n2.GetNodeID(), strmID)
-	if err != nil {
-		t.Errorf("Error getting master playlist: %v", err)
-	}
-	timer = time.NewTimer(time.Second * 3)
-	select {
-	case r := <-mplc:
-		vars := r.Variants
-		if len(vars) != 1 {
-			t.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
-		}
-		if r.Variants[0].URI != "test2.m3u8" {
-			t.Errorf("Expecting test2.m3u8, got %v", r.Variants[0].URI)
-		}
-	case <-timer.C:
 		t.Errorf("Timed out")
 	}
 
@@ -1193,7 +1152,7 @@ func TestMasterPlaylistIntegration(t *testing.T) {
 	mpl = m3u8.NewMasterPlaylist()
 	pl, _ = m3u8.NewMediaPlaylist(10, 10)
 	mpl.Append("test3.m3u8", pl, m3u8.VariantParams{Bandwidth: 100000})
-	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n1.NetworkNode.Identity))
+	strmID = fmt.Sprintf("%vba1637fd2531f50f9e8f99a37b48d7cfe12fa498ff6da8d6b63279b4632101d5e8b1c872f", peer.IDHexEncode(n3.NetworkNode.Identity))
 	if err := n3.UpdateMasterPlaylist(strmID, mpl); err != nil {
 		t.Errorf("Error updating master playlist: %v", err)
 	}
