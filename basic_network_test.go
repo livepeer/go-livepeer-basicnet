@@ -569,7 +569,7 @@ func TestSendSubscribe(t *testing.T) {
 		t.Errorf("Subscriber should be working")
 	}
 
-	for start := time.Now(); time.Since(start) < 1*time.Second; {
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
 		if len(result) == 10 {
 			break
 		} else {
