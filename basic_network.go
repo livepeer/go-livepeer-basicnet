@@ -62,6 +62,7 @@ type BasicVideoNetwork struct {
 	msgChans               map[string]chan *Msg
 	transResponseCallbacks map[string]func(transcodeResult map[string]string)
 	relayers               map[relayerID]*BasicRelayer
+	msgCounts              map[Opcode]int64
 }
 
 func (n *BasicVideoNetwork) String() string {
@@ -93,7 +94,8 @@ func NewBasicVideoNetwork(n *BasicNetworkNode, workDir string) (*BasicVideoNetwo
 		mplMap:                 make(map[string]*m3u8.MasterPlaylist),
 		mplChans:               make(map[string]chan *m3u8.MasterPlaylist),
 		msgChans:               make(map[string]chan *Msg),
-		transResponseCallbacks: make(map[string]func(transcodeResult map[string]string))}
+		transResponseCallbacks: make(map[string]func(transcodeResult map[string]string)),
+		msgCounts:              make(map[Opcode]int)}
 	n.Network = nw
 
 	//Set up a worker to write connections
@@ -487,6 +489,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			return ErrProtocol
 		}
 		glog.V(5).Infof("Got Sub Req: %v", sr)
+		nw.msgCounts[msg.Op]++
 		return handleSubReq(nw, sr, ws.Stream.Conn().RemotePeer())
 	case CancelSubID:
 		cr, ok := msg.Data.(CancelSubMsg)
@@ -494,6 +497,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert CancelSubMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleCancelSubReq(nw, cr, ws.Stream.Conn().RemotePeer())
 	case StreamDataID:
 		//Enque it into the subscriber
@@ -503,6 +507,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			return ErrProtocol
 		}
 		err := handleStreamData(nw, ws.Stream.Conn().RemotePeer(), &sd)
+		nw.msgCounts[msg.Op]++
 		if err == ErrProtocol {
 			glog.Errorf("Got protocol error, but ignoring it for now")
 			return nil
@@ -515,6 +520,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert FinishStreamMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleFinishStream(nw, fs)
 	case TranscodeResponseID:
 		tr, ok := msg.Data.(TranscodeResponseMsg)
@@ -522,6 +528,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert TranscodeResponseMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleTranscodeResponse(nw, ws.Stream.Conn().RemotePeer(), tr)
 	case GetMasterPlaylistReqID:
 		//Get the local master playlist from a broadcaster and send it back
@@ -530,6 +537,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert GetMasterPlaylistReqMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleGetMasterPlaylistReq(nw, ws.Stream.Conn().RemotePeer(), mplr)
 	case MasterPlaylistDataID:
 		mpld, ok := msg.Data.(MasterPlaylistDataMsg)
@@ -537,6 +545,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert MasterPlaylistDataMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleMasterPlaylistDataMsg(nw, mpld)
 	case NodeStatusReqID:
 		nsr, ok := msg.Data.(NodeStatusReqMsg)
@@ -544,6 +553,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert NodeStatusReqMsg: %v", msg)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleNodeStatusReqMsg(nw, ws.Stream.Conn().RemotePeer(), nsr)
 	case NodeStatusDataID:
 		nsd, ok := msg.Data.(NodeStatusDataMsg)
@@ -551,6 +561,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 			glog.Errorf("Cannot convert NodeStatusDataMsg: %v", msg.Data)
 			return ErrProtocol
 		}
+		nw.msgCounts[msg.Op]++
 		return handleNodeStatusDataMsg(nw, nsd)
 	default:
 		glog.V(2).Infof("Unknown Data: %v -- closing stream", msg)
@@ -933,4 +944,15 @@ func relayerMapKey(strmID string, opcode Opcode) relayerID {
 
 func msgChansKey(opcode Opcode, key string) string {
 	return fmt.Sprintf("%v|%v", opcode, key)
+}
+
+func (n *BasicVideoNetwork) sendMessageWithRetry(pid peer.ID, strm *BasicOutStream, op Opcode, msg interface{}) error {
+	if err := strm.SendMessage(op, msg); err != nil {
+		newStrm := n.NetworkNode.RefreshOutStream(pid)
+		if err := newStrm.SendMessage(op, msg); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

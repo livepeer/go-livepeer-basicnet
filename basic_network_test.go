@@ -123,6 +123,12 @@ func TestStream(t *testing.T) {
 	if _, ok := n1.NetworkNode.(*BasicNetworkNode).outStreams[n2.NetworkNode.ID()]; !ok {
 		t.Errorf("Expecting stream to be there")
 	}
+	start := time.Now()
+	for ; n2.msgCounts[SubReqID] != 1 && time.Since(start) < time.Second; time.Sleep(100 * time.Millisecond) {
+	}
+	if n2.msgCounts[SubReqID] != 1 {
+		t.Errorf("Expecting 1 message received by n2")
+	}
 	s21 := n2.NetworkNode.GetOutStream(n1.NetworkNode.ID())
 	if err := s21.SendMessage(SubReqID, SubReqMsg{StrmID: strmID1}); err != nil {
 		t.Errorf("Error: %v", err)
@@ -130,15 +136,55 @@ func TestStream(t *testing.T) {
 	if _, ok := n2.NetworkNode.(*BasicNetworkNode).outStreams[n1.NetworkNode.ID()]; !ok {
 		t.Errorf("Expecting stream to be there")
 	}
+	start = time.Now()
+	for ; n1.msgCounts[SubReqID] != 1 && time.Since(start) < time.Second; time.Sleep(100 * time.Millisecond) {
+	}
+	if n1.msgCounts[SubReqID] != 1 {
+		t.Errorf("Expecting 1 message received by n1")
+	}
+}
 
-	//Now cause a problem - use a bad ID (Cannot cancel a stream that doesn't exist)
-	if err := s12.SendMessage(CancelSubID, SubReqMsg{StrmID: strmID2}); err != nil {
-		t.Errorf("Error: %v", err)
+func TestStreamError(t *testing.T) {
+	glog.Infof("\n\nTesting Stream Error...")
+	n1, n2 := setupNodes(t, 15000, 15001)
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	go n1.SetupProtocol()
+	go n2.SetupProtocol()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	// strmID1 := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n1.NetworkNode.ID()))
+	strmID2 := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.ID()))
+	s12 := n1.NetworkNode.GetOutStream(n2.NetworkNode.ID())
+	// s21 := n2.NetworkNode.GetOutStream(n1.NetworkNode.ID())
+
+	//Now cause a problem - use a bad message (Cannot use a StreamDataMsg for CancelSubID)
+	// if err := s12.SendMessage(CancelSubID, SubReqMsg{StrmID: strmID2}); err != nil {
+	glog.Infof("Sending bad message...")
+	err := s12.enc.Encode("{}")
+	if err != nil {
+		t.Errorf("Error encoding to stream")
+	}
+
+	err = s12.w.Flush()
+	if err != nil {
+		t.Errorf("Error flushing")
+	}
+	time.Sleep(time.Millisecond * 100)
+	if n2.msgCounts[SubReqID] != 0 {
+		t.Errorf("Expecting 0 message received by n2, but got %v", n2.msgCounts[SubReqID])
 	}
 
 	//Should still be able to use the old stream
-	if err := s21.SendMessage(SubReqID, SubReqMsg{StrmID: strmID1}); err != nil {
+	s12 = n1.NetworkNode.RefreshOutStream(n2.NetworkNode.ID())
+	if err := s12.SendMessage(SubReqID, StreamDataMsg{SeqNo: 0, Data: []byte("hi"), StrmID: strmID2}); err != nil {
 		t.Errorf("Expecting to not get an error, but got: %v", err)
+	}
+	start := time.Now()
+	for ; n2.msgCounts[SubReqID] != 1 && time.Since(start) < time.Second; time.Sleep(100 * time.Millisecond) {
+	}
+	if n2.msgCounts[SubReqID] != 1 {
+		t.Errorf("Expecting 1 message received by n2, but got %v", n1.msgCounts[SubReqID])
 	}
 }
 
