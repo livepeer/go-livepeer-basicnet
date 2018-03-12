@@ -8,7 +8,6 @@ import (
 
 	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 
 	"github.com/golang/glog"
 	"github.com/livepeer/go-livepeer/common"
@@ -21,7 +20,7 @@ var ErrSubscriber = errors.New("ErrSubscriber")
 //BasicSubscriber keeps track of
 type BasicSubscriber struct {
 	Network *BasicVideoNetwork
-	host    host.Host
+	// host    host.Host
 	msgChan chan StreamDataMsg
 	// networkStream *BasicStream
 	StrmID       string
@@ -60,7 +59,7 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 	}
 
 	//If we don't, send subscribe request, listen for response
-	localPeers := s.Network.NetworkNode.PeerHost.Peerstore().Peers()
+	localPeers := s.Network.NetworkNode.GetPeers()
 	if len(localPeers) == 1 {
 		glog.Errorf("No local peers")
 		return ErrSubscriber
@@ -73,7 +72,7 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 	peers := kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid))
 
 	for _, p := range peers {
-		if p == s.Network.NetworkNode.Identity {
+		if p == s.Network.NetworkNode.ID() {
 			continue
 		}
 		//Question: Where do we close the stream? If we only close on "Unsubscribe", we may leave some streams open...
