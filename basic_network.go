@@ -214,6 +214,7 @@ func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
 }
 
 //SendTranscodeResponse sends the transcode result to the broadcast node.
+func (n *BasicVideoNetwork) SendTranscodeResponse(broadcaster string, strmID string, transcodedVideos map[string]string) error {
 	//Don't do anything if the node is the transcoder and the broadcaster at the same time.
 	if n.GetNodeID() == broadcaster {
 		glog.Infof("CurrentNode: %v, broadcaster: %v", n.GetNodeID(), broadcaster)
