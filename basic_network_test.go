@@ -153,13 +153,10 @@ func TestStreamError(t *testing.T) {
 	go n2.SetupProtocol()
 	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
 
-	// strmID1 := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n1.NetworkNode.ID()))
 	strmID2 := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.ID()))
 	s12 := n1.NetworkNode.GetOutStream(n2.NetworkNode.ID())
-	// s21 := n2.NetworkNode.GetOutStream(n1.NetworkNode.ID())
 
 	//Now cause a problem - use a bad message (Cannot use a StreamDataMsg for CancelSubID)
-	// if err := s12.SendMessage(CancelSubID, SubReqMsg{StrmID: strmID2}); err != nil {
 	glog.Infof("Sending bad message...")
 	err := s12.enc.Encode("{}")
 	if err != nil {
@@ -175,16 +172,15 @@ func TestStreamError(t *testing.T) {
 		t.Errorf("Expecting 0 message received by n2, but got %v", n2.msgCounts[SubReqID])
 	}
 
-	//Should still be able to use the old stream
-	s12 = n1.NetworkNode.RefreshOutStream(n2.NetworkNode.ID())
-	if err := s12.SendMessage(SubReqID, StreamDataMsg{SeqNo: 0, Data: []byte("hi"), StrmID: strmID2}); err != nil {
+	//Should still be able to send even after a bad message was sent
+	if err := n1.SendTranscodeResponse(n2.GetNodeID(), strmID2, map[string]string{"strm": "strm"}); err != nil {
 		t.Errorf("Expecting to not get an error, but got: %v", err)
 	}
 	start := time.Now()
-	for ; n2.msgCounts[SubReqID] != 1 && time.Since(start) < time.Second; time.Sleep(100 * time.Millisecond) {
+	for ; n2.msgCounts[TranscodeResponseID] != 1 && time.Since(start) < time.Second; time.Sleep(100 * time.Millisecond) {
 	}
-	if n2.msgCounts[SubReqID] != 1 {
-		t.Errorf("Expecting 1 message received by n2, but got %v", n1.msgCounts[SubReqID])
+	if n2.msgCounts[TranscodeResponseID] != 1 {
+		t.Errorf("Expecting 1 message received by n2, but got %v", n1.msgCounts[TranscodeResponseID])
 	}
 }
 
@@ -671,7 +667,7 @@ func TestHandleCancel(t *testing.T) {
 	delete(n1.broadcasters, strmID1)
 
 	//Put a relayer with 2 listeners in the node, make sure cancel removes the listener, then the relayer
-	r := &BasicRelayer{listeners: map[string]*BasicOutStream{peer.IDHexEncode(nid1): nil, peer.IDHexEncode(nid2): nil}}
+	r := &BasicRelayer{listeners: map[string]*BasicOutStream{peer.IDHexEncode(nid1): nil, peer.IDHexEncode(nid2): nil}, Network: n1}
 	n1.relayers[relayerMapKey(strmID1, SubReqID)] = r
 	if err := handleCancelSubReq(n1, CancelSubMsg{StrmID: strmID1}, nid1); err != nil {
 		t.Errorf("Error handling req: %v", err)
