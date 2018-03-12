@@ -95,7 +95,7 @@ func NewBasicVideoNetwork(n *BasicNetworkNode, workDir string) (*BasicVideoNetwo
 		mplChans:               make(map[string]chan *m3u8.MasterPlaylist),
 		msgChans:               make(map[string]chan *Msg),
 		transResponseCallbacks: make(map[string]func(transcodeResult map[string]string)),
-		msgCounts:              make(map[Opcode]int)}
+		msgCounts:              make(map[Opcode]int64)}
 	n.Network = nw
 
 	//Set up a worker to write connections
