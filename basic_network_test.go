@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
 	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
@@ -26,40 +25,6 @@ func init() {
 	// var logLevel string
 	// flag.StringVar(&logLevel, "logLevel", "6", "test")
 	// flag.Lookup("v").Value.Set(logLevel)
-}
-
-func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwork) {
-	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
-	n1, _ := NewBasicVideoNetwork(no1, "")
-	if err := n1.SetupProtocol(); err != nil {
-		t.Errorf("Error creating node: %v", err)
-	}
-
-	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
-	n2, _ := NewBasicVideoNetwork(no2, "")
-	if err := n2.SetupProtocol(); err != nil {
-		t.Errorf("Error creating node: %v", err)
-	}
-
-	return n1, n2
-}
-
-func connectHosts(h1, h2 host.Host) {
-	h1.Peerstore().AddAddrs(h2.ID(), h2.Addrs(), peerstore.PermanentAddrTTL)
-	h2.Peerstore().AddAddrs(h1.ID(), h1.Addrs(), peerstore.PermanentAddrTTL)
-	err := h1.Connect(context.Background(), peerstore.PeerInfo{ID: h2.ID()})
-	if err != nil {
-		glog.Errorf("Cannot connect h1 with h2: %v", err)
-	}
-	err = h2.Connect(context.Background(), peerstore.PeerInfo{ID: h1.ID()})
-	if err != nil {
-		glog.Errorf("Cannot connect h2 with h1: %v", err)
-	}
-
-	// Connection might not be formed right away under high load.  See https://github.com/libp2p/go-libp2p-kad-dht/blob/master/dht_test.go (func connect)
-	time.Sleep(time.Millisecond * 100)
 }
 
 type keyPair struct {
