@@ -81,7 +81,18 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 		if ns != nil {
 			//Send SubReq
 			glog.Infof("Sending Req %v", s.StrmID)
-			if err := s.Network.sendMessageWithRetry(p, ns, SubReqID, SubReqMsg{StrmID: s.StrmID}); err != nil {
+			ts := TranscodeSubMsg{
+				MultiAddrs: s.Network.NetworkNode.Host().Addrs(),
+				StrmID:     s.StrmID,
+			}
+			var sig []byte
+			sig, err = s.Network.NetworkNode.Sign(ts.BytesForSigning())
+			if err != nil {
+				glog.Errorf("Error signing TranscodeSubMsg: %v", err)
+				return err
+			}
+			ts.Sig = sig
+			if err = s.Network.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
 				glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
 			}
 			ctxW, cancel := context.WithCancel(context.Background())

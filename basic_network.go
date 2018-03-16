@@ -530,6 +530,14 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 		}
 		nw.msgCounts[msg.Op]++
 		return handleTranscodeResponse(nw, ws.Stream.Conn().RemotePeer(), tr)
+	case TranscodeSubID:
+		ts, ok := msg.Data.(TranscodeSubMsg)
+		if !ok {
+			glog.Errorf("Cannot convert TranscodeSubMsg: %v", msg.Data)
+			return ErrProtocol
+		}
+		nw.msgCounts[msg.Op]++
+		return handleTranscodeSub(nw, ws.Stream.Conn(), ts)
 	case GetMasterPlaylistReqID:
 		//Get the local master playlist from a broadcaster and send it back
 		mplr, ok := msg.Data.(GetMasterPlaylistReqMsg)
@@ -780,6 +788,15 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, remotePID peer.ID, tr Transc
 	}
 	glog.Info("Cannot relay TranscodeResponse to peers")
 	return ErrHandleMsg
+}
+
+func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, tr TranscodeSubMsg) error {
+	glog.Infof("In handleTranscodeSub")
+	ok := nw.NetworkNode.VerifyTranscoderSig(tr.BytesForSigning(), tr.Sig, tr.StrmID)
+	if !ok {
+		return errors.New("failed to verify transcoder signature")
+	}
+	return nil
 }
 
 func handleGetMasterPlaylistReq(nw *BasicVideoNetwork, remotePID peer.ID, mplr GetMasterPlaylistReqMsg) error {

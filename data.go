@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
 )
 
 type Opcode uint8
@@ -16,6 +18,7 @@ const (
 	SubReqID
 	CancelSubID
 	TranscodeResponseID
+	TranscodeSubID
 	GetMasterPlaylistReqID
 	MasterPlaylistDataID
 	NodeStatusReqID
@@ -57,6 +60,68 @@ type TranscodeResponseMsg struct {
 	//map of streamid -> video description
 	StrmID string
 	Result map[string]string
+}
+
+type TranscodeSubMsg struct {
+	MultiAddrs []ma.Multiaddr
+	StrmID     string
+	Sig        []byte
+}
+
+// struct that can be handled by gob; multiaddr can't
+type TranscodeSubMsg_b struct {
+	MultiAddrs [][]byte
+	StrmID     string
+	Sig        []byte
+}
+
+func (ts TranscodeSubMsg) GobEncode() ([]byte, error) {
+	b := make([][]byte, len(ts.MultiAddrs))
+	for i, v := range ts.MultiAddrs {
+		b[i] = v.Bytes()
+	}
+	tsb := TranscodeSubMsg_b{MultiAddrs: b, StrmID: ts.StrmID, Sig: ts.Sig}
+	gob.Register(TranscodeSubMsg_b{})
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	err := enc.Encode(tsb)
+	return buf.Bytes(), err
+}
+
+func (ts *TranscodeSubMsg) GobDecode(data []byte) error {
+	// deserialize into a struct we can handle natively
+	var tsb TranscodeSubMsg_b
+	dec := gob.NewDecoder(bytes.NewBuffer(data))
+	err := dec.Decode(&tsb)
+	if err != nil {
+		return err
+	}
+
+	// convert bytes into multiaddrs
+	maddrs := make([]ma.Multiaddr, len(tsb.MultiAddrs))
+	for i, v := range tsb.MultiAddrs {
+		m, err := ma.NewMultiaddrBytes(v)
+		if err != nil {
+			return err
+		}
+		maddrs[i] = m
+	}
+
+	// now populate our struct
+	ts.MultiAddrs = maddrs
+	ts.StrmID = tsb.StrmID
+	ts.Sig = tsb.Sig
+	return nil
+}
+
+func (ts TranscodeSubMsg) BytesForSigning() []byte {
+	b := make([][]byte, len(ts.MultiAddrs)+1)
+	for i, v := range ts.MultiAddrs {
+		b[i] = v.Bytes()
+	}
+	b[len(ts.MultiAddrs)] = []byte(ts.StrmID)
+	return bytes.Join(b, []byte(""))
 }
 
 type GetMasterPlaylistReqMsg struct {
@@ -113,6 +178,12 @@ func (m Msg) MarshalJSON() ([]byte, error) {
 		err := enc.Encode(m.Data.(TranscodeResponseMsg))
 		if err != nil {
 			return nil, fmt.Errorf("Failed to marshal TranscodeResponseMsg: %v", err)
+		}
+	case TranscodeSubMsg:
+		gob.Register(TranscodeSubMsg{})
+		err := enc.Encode(m.Data.(TranscodeSubMsg))
+		if err != nil {
+			return nil, fmt.Errorf("Failed to marshal TranscodeSubMsg: %v", err)
 		}
 	case MasterPlaylistDataMsg:
 		gob.Register(MasterPlaylistDataMsg{})
@@ -193,6 +264,13 @@ func (m *Msg) UnmarshalJSON(b []byte) error {
 			return errors.New("failed to decode TranscodeResponseMsg")
 		}
 		m.Data = tr
+	case TranscodeSubID:
+		var ts TranscodeSubMsg
+		err := dec.Decode(&ts)
+		if err != nil {
+			return errors.New("Failed to decode TranscodeSubMsg")
+		}
+		m.Data = ts
 	case MasterPlaylistDataID:
 		var mpld MasterPlaylistDataMsg
 		err := dec.Decode(&mpld)

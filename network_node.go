@@ -27,6 +27,7 @@ import (
 
 type NetworkNode interface {
 	ID() peer.ID
+	Host() host.Host
 	GetOutStream(pid peer.ID) *BasicOutStream
 	RefreshOutStream(pid peer.ID) *BasicOutStream
 	RemoveStream(pid peer.ID)
@@ -38,6 +39,10 @@ type NetworkNode interface {
 	ClosestLocalPeers(strmID string) ([]peer.ID, error)
 	GetDHT() *kad.IpfsDHT
 	SetStreamHandler(pid protocol.ID, handler inet.StreamHandler)
+	SetSignFun(sign func(data []byte) ([]byte, error))
+	Sign(data []byte) ([]byte, error)
+	SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool)
+	VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool
 }
 
 type BasicNetworkNode struct {
@@ -47,6 +52,8 @@ type BasicNetworkNode struct {
 	Network        *BasicVideoNetwork
 	outStreams     map[peer.ID]*BasicOutStream
 	outStreamsLock *sync.Mutex
+	sign           func(data []byte) ([]byte, error)
+	verify         func(data []byte, sig []byte, strmID string) bool
 }
 
 //NewNode creates a new Livepeerd node.
@@ -162,6 +169,10 @@ func (n *BasicNetworkNode) ID() peer.ID {
 	return n.Identity
 }
 
+func (n *BasicNetworkNode) Host() host.Host {
+	return n.PeerHost
+}
+
 func (n *BasicNetworkNode) GetPeers() []peer.ID {
 	return n.PeerHost.Peerstore().Peers()
 }
@@ -188,6 +199,28 @@ func (n *BasicNetworkNode) GetDHT() *kad.IpfsDHT {
 
 func (n *BasicNetworkNode) SetStreamHandler(pid protocol.ID, handler inet.StreamHandler) {
 	n.PeerHost.SetStreamHandler(pid, handler)
+}
+
+func (n *BasicNetworkNode) SetSignFun(sign func(data []byte) ([]byte, error)) {
+	n.sign = sign
+}
+
+func (n *BasicNetworkNode) Sign(data []byte) ([]byte, error) {
+	if n.sign == nil {
+		return make([]byte, 0), nil // XXX not sure about this. error instead?
+	}
+	return n.sign(data)
+}
+
+func (n *BasicNetworkNode) SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool) {
+	n.verify = verify
+}
+
+func (n *BasicNetworkNode) VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool {
+	if n.verify == nil {
+		return false
+	}
+	return n.verify(data, sig, strmID)
 }
 
 func (bn *BasicNetworkNode) ClosestLocalPeers(strmID string) ([]peer.ID, error) {
