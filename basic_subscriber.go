@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	inet "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
+	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 
 	"github.com/golang/glog"
@@ -79,10 +81,20 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 		glog.V(5).Infof("New peer from kademlia: %v", peer.IDHexEncode(p))
 		ns := s.Network.NetworkNode.GetOutStream(p)
 		if ns != nil {
-			//Send SubReq
-			glog.Infof("Sending Req %v", s.StrmID)
+			//Send TranscodeSub
+			glog.Infof("%v Sending TranscodeSub to %v", s.Network.NetworkNode.ID().String(), p.String())
+			localNodeID := peer.IDB58Encode(s.Network.NetworkNode.ID())
+			ipfs, err := ma.NewMultiaddr("/ipfs/" + localNodeID)
+			if err != nil {
+				glog.Errorf("Unable to create IPFS multiaddr for local node : %v", err)
+				return err
+			}
+			maddrs := make([]ma.Multiaddr, len(s.Network.NetworkNode.Host().Addrs()))
+			for i, v := range s.Network.NetworkNode.Host().Addrs() {
+				maddrs[i] = v.Encapsulate(ipfs)
+			}
 			ts := TranscodeSubMsg{
-				MultiAddrs: s.Network.NetworkNode.Host().Addrs(),
+				MultiAddrs: maddrs,
 				StrmID:     s.StrmID,
 			}
 			var sig []byte

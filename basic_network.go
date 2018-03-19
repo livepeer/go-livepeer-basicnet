@@ -17,6 +17,7 @@ import (
 
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
+	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
@@ -36,6 +37,7 @@ var ErrProtocol = errors.New("ProtocolError")
 var ErrHandleMsg = errors.New("ErrHandleMsg")
 var ErrTranscodeResponse = errors.New("TranscodeResponseError")
 var ErrGetMasterPlaylist = errors.New("ErrGetMasterPlaylist")
+var ErrBadMultiaddrs = errors.New("BadMultiaddrs")
 var GetMasterPlaylistRelayWait = 10 * time.Second
 var GetResponseWithRelayWait = 10 * time.Second
 
@@ -790,12 +792,78 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, remotePID peer.ID, tr Transc
 	return ErrHandleMsg
 }
 
-func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, tr TranscodeSubMsg) error {
-	glog.Infof("In handleTranscodeSub")
-	ok := nw.NetworkNode.VerifyTranscoderSig(tr.BytesForSigning(), tr.Sig, tr.StrmID)
+func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg) error {
+	glog.Infof("%v In handleTranscodeSub; received from %v", nw.NetworkNode.ID(), conn.RemotePeer())
+	ok := nw.NetworkNode.VerifyTranscoderSig(ts.BytesForSigning(), ts.Sig, ts.StrmID)
 	if !ok {
-		return errors.New("failed to verify transcoder signature")
+		// XXX fix this; need capability to check sig in calling app
+		//return errors.New("failed to verify transcoder signature")
 	}
+	// if we're the target node, open a direct cxn. otherwise, re-transmit msg
+	targetPid, err := extractNodeID(ts.StrmID)
+	if err != nil {
+		glog.Errorf("Error extracting node id from streamID: %v", ts.StrmID)
+		return ErrHandleMsg
+	}
+	if peer.IDHexEncode(targetPid) != nw.GetNodeID() {
+		// we're not the target; re-transmit message
+		localPeers := nw.NetworkNode.GetPeers()
+		if len(localPeers) == 1 {
+			glog.Errorf("No local peers to re-transmit TranscodeSub")
+			return ErrNoClosePeers
+		}
+		peers := kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid))
+		for _, p := range peers {
+			if p == nw.NetworkNode.ID() || p == conn.RemotePeer() {
+				continue
+			}
+			glog.Infof("%v Re-transmitting TranscodeSub to %v", nw.NetworkNode.ID(), p)
+			ns := nw.NetworkNode.GetOutStream(p)
+			if ns == nil {
+				continue
+			}
+			if err = nw.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
+				glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
+				continue
+			}
+			return nil
+		}
+		glog.Errorf("Unable to propagate TranscodeSub to peer")
+		return ErrNoClosePeers
+	}
+	// open direct connection. first, convert multiaddrs as needed
+	mas := make([]string, len(ts.MultiAddrs))
+	if len(ts.MultiAddrs) <= 0 {
+		glog.Errorf("No multiaddrs; can't establish direct cxn to transcoder")
+		return ErrBadMultiaddrs
+	}
+	pidStr, err := ts.MultiAddrs[0].ValueForProtocol(ma.P_IPFS)
+	if err != nil {
+		glog.Errorf("IPFS nodeid missing from multiaddr")
+		return ErrBadMultiaddrs
+	}
+	pid, err := peer.IDB58Decode(pidStr)
+	if err != nil {
+		glog.Errorf("Invalid IPFS nodeid in multiaddr")
+		return ErrBadMultiaddrs
+	}
+	ipfs, err := ma.NewMultiaddr("/ipfs/" + pidStr)
+	if err != nil {
+		glog.Errorf("Could not re-construct IPFS prefix")
+		return ErrBadMultiaddrs
+	}
+	for i, v := range ts.MultiAddrs {
+		mas[i] = (v.Decapsulate(ipfs)).String()
+		//mas[i] = v.String()
+		//glog.Infof("multiaddrs: %v", mas[i])
+	}
+	err = nw.Connect(peer.IDHexEncode(pid), mas)
+	if err != nil {
+		glog.Errorf("%v Unable to connect to transcoder : %v", nw.NetworkNode.ID(), err)
+		return err
+	}
+	glog.Infof("%v Established direct connection to transcoder %v", nw.NetworkNode.ID(), pid)
+
 	return nil
 }
 
