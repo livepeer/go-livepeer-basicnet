@@ -104,6 +104,7 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 				return err
 			}
 			ts.Sig = sig
+			s.Network.NetworkNode.Host().Network().Notify(s)
 			if err = s.Network.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
 				glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
 			}
@@ -166,6 +167,7 @@ func (s *BasicSubscriber) Unsubscribe() error {
 
 	//Remove self from network
 	delete(s.Network.subscribers, s.StrmID)
+	s.Network.NetworkNode.Host().Network().StopNotify(s)
 
 	return nil
 }
@@ -176,4 +178,49 @@ func (s BasicSubscriber) String() string {
 
 func (s *BasicSubscriber) IsLive() bool {
 	return s.working
+}
+
+// Notifiee
+func (s *BasicSubscriber) HandleConnection(conn inet.Conn) {
+}
+func (s *BasicSubscriber) Listen(n inet.Network, m ma.Multiaddr) {
+}
+func (s *BasicSubscriber) ListenClose(n inet.Network, m ma.Multiaddr) {
+}
+func (s *BasicSubscriber) OpenedStream(n inet.Network, st inet.Stream) {
+}
+func (s *BasicSubscriber) ClosedStream(n inet.Network, st inet.Stream) {
+}
+func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
+	glog.Infof("%v Connected; processing", conn.LocalPeer())
+	broadcasterPid, err := extractNodeID(s.StrmID)
+	if err != nil {
+		glog.Errorf("%v Unable to extract NodeID from %v", conn.LocalPeer(), s.StrmID)
+		return
+	}
+	if conn.RemotePeer() != broadcasterPid {
+		glog.Infof("%v subscriber got a connection from a non-sub %v", conn.LocalPeer(), conn.RemotePeer())
+		return
+	}
+	// check for duplicated cxns or subs?
+	glog.Infof("%v Getting OutStream", conn.LocalPeer())
+	go func() {
+		ns := s.Network.NetworkNode.GetOutStream(conn.RemotePeer())
+		if ns == nil {
+			glog.Errorf("%v Unable to create an outstream with %v", conn.LocalPeer(), conn.RemotePeer())
+			return
+		}
+		glog.Infof("%v Sending Message: SubReq", conn.LocalPeer())
+		err = s.Network.sendMessageWithRetry(conn.RemotePeer(), ns, SubReqID, SubReqMsg{StrmID: s.StrmID})
+		if err != nil {
+			glog.Errorf("%v Unable to send SubReq to %v : %v", conn.LocalPeer(), conn.RemotePeer(), err)
+			return
+		}
+		glog.Infof("%v Setting Upstream Peer", conn.LocalPeer())
+		s.UpstreamPeer = conn.RemotePeer()
+		glog.Infof("%v Subscriber got direct connection from %v", conn.LocalPeer(), conn.RemotePeer())
+	}()
+}
+func (s *BasicSubscriber) Disconnected(n inet.Network, conn inet.Conn) {
+	// Resend TranscodeSub periodically if necessary?
 }
