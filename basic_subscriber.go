@@ -81,32 +81,43 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 		glog.V(5).Infof("New peer from kademlia: %v", peer.IDHexEncode(p))
 		ns := s.Network.NetworkNode.GetOutStream(p)
 		if ns != nil {
-			//Send TranscodeSub
-			glog.Infof("%v Sending TranscodeSub to %v", s.Network.NetworkNode.ID().String(), p.String())
-			localNodeID := peer.IDB58Encode(s.Network.NetworkNode.ID())
-			ipfs, err := ma.NewMultiaddr("/ipfs/" + localNodeID)
-			if err != nil {
-				glog.Errorf("Unable to create IPFS multiaddr for local node : %v", err)
-				return err
-			}
-			maddrs := make([]ma.Multiaddr, len(s.Network.NetworkNode.Host().Addrs()))
-			for i, v := range s.Network.NetworkNode.Host().Addrs() {
-				maddrs[i] = v.Encapsulate(ipfs)
-			}
-			ts := TranscodeSubMsg{
-				MultiAddrs: maddrs,
-				StrmID:     s.StrmID,
-			}
-			var sig []byte
-			sig, err = s.Network.NetworkNode.Sign(ts.BytesForSigning())
-			if err != nil {
-				glog.Errorf("Error signing TranscodeSubMsg: %v", err)
-				return err
-			}
-			ts.Sig = sig
-			s.Network.NetworkNode.Host().Network().Notify(s)
-			if err = s.Network.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
-				glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
+			if targetPid == p {
+				// Send SubReq
+				glog.Infof("Already have a direct cxn to broadcaster; subscribing")
+				sub := SubReqMsg{StrmID: s.StrmID}
+				err = s.Network.sendMessageWithRetry(p, ns, SubReqID, sub)
+				if err != nil {
+					glog.Errorf("Error sending SubReq to broadcaster : %v", err)
+					return err
+				}
+			} else {
+				// Send TranscodeSub
+				glog.Infof("%v Sending TranscodeSub to %v", s.Network.NetworkNode.ID(), p)
+				localNodeID := peer.IDB58Encode(s.Network.NetworkNode.ID())
+				ipfs, err := ma.NewMultiaddr("/ipfs/" + localNodeID)
+				if err != nil {
+					glog.Errorf("Unable to create IPFS multiaddr for local node : %v", err)
+					return err
+				}
+				maddrs := make([]ma.Multiaddr, len(s.Network.NetworkNode.Host().Addrs()))
+				for i, v := range s.Network.NetworkNode.Host().Addrs() {
+					maddrs[i] = v.Encapsulate(ipfs)
+				}
+				ts := TranscodeSubMsg{
+					MultiAddrs: maddrs,
+					StrmID:     s.StrmID,
+				}
+				var sig []byte
+				sig, err = s.Network.NetworkNode.Sign(ts.BytesForSigning())
+				if err != nil {
+					glog.Errorf("Error signing TranscodeSubMsg: %v", err)
+					return err
+				}
+				ts.Sig = sig
+				s.Network.NetworkNode.Host().Network().Notify(s)
+				if err = s.Network.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
+					glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
+				}
 			}
 			ctxW, cancel := context.WithCancel(context.Background())
 			s.cancelWorker = cancel
