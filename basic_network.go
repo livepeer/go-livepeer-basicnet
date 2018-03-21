@@ -837,26 +837,10 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 		glog.Errorf("No multiaddrs; can't establish direct cxn to transcoder")
 		return ErrBadMultiaddrs
 	}
-	pidStr, err := ts.MultiAddrs[0].ValueForProtocol(ma.P_IPFS)
-	if err != nil {
-		glog.Errorf("IPFS nodeid missing from multiaddr")
-		return ErrBadMultiaddrs
-	}
-	pid, err := peer.IDB58Decode(pidStr)
-	if err != nil {
-		glog.Errorf("Invalid IPFS nodeid in multiaddr")
-		return ErrBadMultiaddrs
-	}
-	ipfs, err := ma.NewMultiaddr("/ipfs/" + pidStr)
-	if err != nil {
-		glog.Errorf("Could not re-construct IPFS prefix")
-		return ErrBadMultiaddrs
-	}
 	for i, v := range ts.MultiAddrs {
-		mas[i] = (v.Decapsulate(ipfs)).String()
-		//mas[i] = v.String()
-		//glog.Infof("multiaddrs: %v", mas[i])
+		mas[i] = v.String()
 	}
+	pid := ts.NodeID
 	err = nw.Connect(peer.IDHexEncode(pid), mas)
 	if err != nil {
 		glog.Errorf("%v Unable to connect to transcoder : %v", nw.NetworkNode.ID(), err)

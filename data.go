@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
+	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 )
 
 type Opcode uint8
@@ -64,6 +65,7 @@ type TranscodeResponseMsg struct {
 
 type TranscodeSubMsg struct {
 	MultiAddrs []ma.Multiaddr
+	NodeID     peer.ID
 	StrmID     string
 	Sig        []byte
 }
@@ -71,6 +73,7 @@ type TranscodeSubMsg struct {
 // struct that can be handled by gob; multiaddr can't
 type TranscodeSubMsg_b struct {
 	MultiAddrs [][]byte
+	NodeID     []byte
 	StrmID     string
 	Sig        []byte
 }
@@ -80,7 +83,8 @@ func (ts TranscodeSubMsg) GobEncode() ([]byte, error) {
 	for i, v := range ts.MultiAddrs {
 		b[i] = v.Bytes()
 	}
-	tsb := TranscodeSubMsg_b{MultiAddrs: b, StrmID: ts.StrmID, Sig: ts.Sig}
+	n := []byte(ts.NodeID)
+	tsb := TranscodeSubMsg_b{MultiAddrs: b, StrmID: ts.StrmID, NodeID: n, Sig: ts.Sig}
 	gob.Register(TranscodeSubMsg_b{})
 
 	var buf bytes.Buffer
@@ -107,20 +111,29 @@ func (ts *TranscodeSubMsg) GobDecode(data []byte) error {
 		}
 		maddrs[i] = m
 	}
+	var nid peer.ID
+	if len(tsb.NodeID) > 0 {
+		nid, err = peer.IDFromBytes(tsb.NodeID)
+	} // not sure what 'nid' resolves to in the uninitialized case
+	if err != nil {
+		return err
+	}
 
 	// now populate our struct
 	ts.MultiAddrs = maddrs
+	ts.NodeID = nid
 	ts.StrmID = tsb.StrmID
 	ts.Sig = tsb.Sig
 	return nil
 }
 
 func (ts TranscodeSubMsg) BytesForSigning() []byte {
-	b := make([][]byte, len(ts.MultiAddrs)+1)
+	b := make([][]byte, len(ts.MultiAddrs)+2)
 	for i, v := range ts.MultiAddrs {
 		b[i] = v.Bytes()
 	}
-	b[len(ts.MultiAddrs)] = []byte(ts.StrmID)
+	b[len(ts.MultiAddrs)+0] = []byte(ts.StrmID)
+	b[len(ts.MultiAddrs)+1] = []byte(ts.NodeID)
 	return bytes.Join(b, []byte(""))
 }
 

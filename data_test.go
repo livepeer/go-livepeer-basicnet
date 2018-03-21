@@ -6,9 +6,16 @@ import (
 	"testing"
 
 	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
+	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
+	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 )
 
 func compareTs(a *TranscodeSubMsg, b *TranscodeSubMsg) bool {
+	// not great because we don't know precisely which cases failed.
+	// return error instead?
+	if peer.IDB58Encode(a.NodeID) != peer.IDB58Encode(b.NodeID) {
+		return false
+	}
 	if a.StrmID != b.StrmID {
 		return false
 	}
@@ -41,14 +48,17 @@ func TestTranscodeSubGob(t *testing.T) {
 	}
 	err = dec.Decode(&tsd)
 	if err != nil || !compareTs(&ts, &tsd) {
-		t.Errorf("Did not decode empty transcodesub correctly")
+		t.Error("Did not decode empty transcodesub correctly", err)
 	}
 
 	// populated transcodesub
 	b.Reset()
 	tsd = TranscodeSubMsg{}
 	m1, _ := ma.NewMultiaddr("/ip4/127.0.0.1/udp/1234")
+	_, pub, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+	nodeID, _ := peer.IDFromPublicKey(pub)
 	ts = TranscodeSubMsg{
+		NodeID:     nodeID,
 		StrmID:     "test",
 		Sig:        []byte(""),
 		MultiAddrs: []ma.Multiaddr{m1},
@@ -93,5 +103,22 @@ func TestTranscodeSubGob(t *testing.T) {
 	err = dec.Decode(&tsd) // should return error
 	if err == nil || err.Error() != "no protocol with code 0" {
 		t.Errorf("Did not decode invalid mutiaddr : %v", err)
+	}
+
+	// fail to decode an invalid nodeid
+	b.Reset()
+	tsd = TranscodeSubMsg{}
+	enc.Encode(ts)
+	rawbuf = b.Bytes()
+	idx = bytes.Index(rawbuf, []byte(nodeID))
+	if idx == -1 {
+		t.Error("Unable to find nodeid encoded gob")
+	}
+	rawbuf[idx] = 0xff // perturb data
+	err = dec.Decode(&tsd)
+	if err == nil ||
+		!(err.Error()[0:29] == "multihash length inconsistent" ||
+			err.Error()[0:15] == "digest too long") {
+		t.Error(err)
 	}
 }

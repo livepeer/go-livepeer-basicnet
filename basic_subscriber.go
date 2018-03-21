@@ -93,18 +93,9 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 			} else {
 				// Send TranscodeSub
 				glog.Infof("%v Sending TranscodeSub to %v", s.Network.NetworkNode.ID(), p)
-				localNodeID := peer.IDB58Encode(s.Network.NetworkNode.ID())
-				ipfs, err := ma.NewMultiaddr("/ipfs/" + localNodeID)
-				if err != nil {
-					glog.Errorf("Unable to create IPFS multiaddr for local node : %v", err)
-					return err
-				}
-				maddrs := make([]ma.Multiaddr, len(s.Network.NetworkNode.Host().Addrs()))
-				for i, v := range s.Network.NetworkNode.Host().Addrs() {
-					maddrs[i] = v.Encapsulate(ipfs)
-				}
 				ts := TranscodeSubMsg{
-					MultiAddrs: maddrs,
+					MultiAddrs: s.Network.NetworkNode.Host().Addrs(),
+					NodeID:     s.Network.NetworkNode.ID(),
 					StrmID:     s.StrmID,
 				}
 				var sig []byte
