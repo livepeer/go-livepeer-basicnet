@@ -215,6 +215,27 @@ func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
 	}
 }
 
+//SendTranscodeSub requests a transcoder subscription from the broadcast node.
+func (n *BasicVideoNetwork) TranscodeSub(ctx context.Context, strmID string, gotData func(seqNo uint64, data []byte, eof bool)) error {
+	sub, err := n.GetSubscriber(strmID)
+	if err != nil {
+		glog.Error("Unable to get broadcaster in transcodesub", err)
+		return err
+	}
+	bcaster, err := extractNodeID(strmID)
+	if err != nil {
+		glog.Error("Unable to extract nodeid in transcodesub", err)
+		return err
+	}
+	pi := n.NetworkNode.GetPeerInfo(bcaster)
+	if len(pi.Addrs) > 0 {
+		// we already have a direct connection to this peer, so subscribe
+		glog.Infof("%v Transcoder already has a direct connection to broadcaster %v; subscribing", n.NetworkNode.ID(), bcaster)
+		return sub.Subscribe(ctx, gotData)
+	}
+	return sub.(*BasicSubscriber).TranscoderSubscribe(ctx, gotData)
+}
+
 //SendTranscodeResponse sends the transcode result to the broadcast node.
 func (n *BasicVideoNetwork) SendTranscodeResponse(broadcaster string, strmID string, transcodedVideos map[string]string) error {
 	//Don't do anything if the node is the transcoder and the broadcaster at the same time.

@@ -48,6 +48,28 @@ func (s *BasicSubscriber) InsertData(sd *StreamDataMsg) error {
 
 //Subscribe kicks off a go routine that calls the gotData func for every new video chunk
 func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint64, data []byte, eof bool)) error {
+	glog.Infof("%v Sending SubReq message", s.Network.NetworkNode.ID())
+	return s.sendSub(ctx, SubReqID, SubReqMsg{StrmID: s.StrmID}, gotData)
+}
+
+func (s *BasicSubscriber) TranscoderSubscribe(ctx context.Context, gotData func(seqNo uint64, data []byte, eof bool)) error {
+	ts := TranscodeSubMsg{
+		MultiAddrs: s.Network.NetworkNode.Host().Addrs(),
+		NodeID:     s.Network.NetworkNode.ID(),
+		StrmID:     s.StrmID,
+	}
+	sig, err := s.Network.NetworkNode.Sign(ts.BytesForSigning())
+	if err != nil {
+		glog.Errorf("Error signing TranscodeSubMsg: %v", err)
+		return err
+	}
+	ts.Sig = sig
+	s.Network.NetworkNode.Host().Network().Notify(s)
+	glog.Infof("%v Sending TranscodeSub message", s.Network.NetworkNode.ID())
+	return s.sendSub(ctx, TranscodeSubID, ts, gotData)
+}
+
+func (s *BasicSubscriber) sendSub(ctx context.Context, opCode Opcode, msg interface{}, gotData func(seqNo uint64, data []byte, eof bool)) error {
 	//Do we already have the broadcaster locally? If we do, just subscribe to it and listen.
 	if b := s.Network.broadcasters[s.StrmID]; b != nil {
 		localS := NewLocalOutStream(s)
@@ -81,34 +103,10 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 		glog.V(5).Infof("New peer from kademlia: %v", peer.IDHexEncode(p))
 		ns := s.Network.NetworkNode.GetOutStream(p)
 		if ns != nil {
-			if targetPid == p {
-				// Send SubReq
-				glog.Infof("Already have a direct cxn to broadcaster; subscribing")
-				sub := SubReqMsg{StrmID: s.StrmID}
-				err = s.Network.sendMessageWithRetry(p, ns, SubReqID, sub)
-				if err != nil {
-					glog.Errorf("Error sending SubReq to broadcaster : %v", err)
-					return err
-				}
-			} else {
-				// Send TranscodeSub
-				glog.Infof("%v Sending TranscodeSub to %v", s.Network.NetworkNode.ID(), p)
-				ts := TranscodeSubMsg{
-					MultiAddrs: s.Network.NetworkNode.Host().Addrs(),
-					NodeID:     s.Network.NetworkNode.ID(),
-					StrmID:     s.StrmID,
-				}
-				var sig []byte
-				sig, err = s.Network.NetworkNode.Sign(ts.BytesForSigning())
-				if err != nil {
-					glog.Errorf("Error signing TranscodeSubMsg: %v", err)
-					return err
-				}
-				ts.Sig = sig
-				s.Network.NetworkNode.Host().Network().Notify(s)
-				if err = s.Network.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
-					glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
-				}
+			err = s.Network.sendMessageWithRetry(p, ns, opCode, msg)
+			if err != nil {
+				glog.Errorf("Error sending message %v to %v", opCode, p)
+				return err
 			}
 			ctxW, cancel := context.WithCancel(context.Background())
 			s.cancelWorker = cancel
