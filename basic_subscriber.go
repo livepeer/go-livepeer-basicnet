@@ -192,7 +192,7 @@ func (s *BasicSubscriber) OpenedStream(n inet.Network, st inet.Stream) {
 func (s *BasicSubscriber) ClosedStream(n inet.Network, st inet.Stream) {
 }
 func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
-	glog.Infof("%v Connected; processing", conn.LocalPeer())
+	glog.Infof("%v Connected from %v; processing", conn.LocalPeer(), conn.RemotePeer())
 	broadcasterPid, err := extractNodeID(s.StrmID)
 	if err != nil {
 		glog.Errorf("%v Unable to extract NodeID from %v", conn.LocalPeer(), s.StrmID)
@@ -203,20 +203,12 @@ func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
 		return
 	}
 	// check for duplicated cxns or subs?
-	glog.Infof("%v Getting OutStream", conn.LocalPeer())
 	go func() {
 		ns := s.Network.NetworkNode.GetOutStream(conn.RemotePeer())
 		if ns == nil {
 			glog.Errorf("%v Unable to create an outstream with %v", conn.LocalPeer(), conn.RemotePeer())
 			return
 		}
-		glog.Infof("%v Sending Message: SubReq", conn.LocalPeer())
-		err = s.Network.sendMessageWithRetry(conn.RemotePeer(), ns, SubReqID, SubReqMsg{StrmID: s.StrmID})
-		if err != nil {
-			glog.Errorf("%v Unable to send SubReq to %v : %v", conn.LocalPeer(), conn.RemotePeer(), err)
-			return
-		}
-		glog.Infof("%v Setting Upstream Peer", conn.LocalPeer())
 		s.UpstreamPeer = conn.RemotePeer()
 		glog.Infof("%v Subscriber got direct connection from %v", conn.LocalPeer(), conn.RemotePeer())
 	}()

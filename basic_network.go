@@ -17,7 +17,6 @@ import (
 
 	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
 	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
@@ -219,19 +218,8 @@ func (n *BasicVideoNetwork) connectPeerInfo(info peerstore.PeerInfo) error {
 func (n *BasicVideoNetwork) TranscodeSub(ctx context.Context, strmID string, gotData func(seqNo uint64, data []byte, eof bool)) error {
 	sub, err := n.GetSubscriber(strmID)
 	if err != nil {
-		glog.Error("Unable to get broadcaster in transcodesub", err)
+		glog.Error("Unable to get subscriber in transcodesub", err)
 		return err
-	}
-	bcaster, err := extractNodeID(strmID)
-	if err != nil {
-		glog.Error("Unable to extract nodeid in transcodesub", err)
-		return err
-	}
-	pi := n.NetworkNode.GetPeerInfo(bcaster)
-	if len(pi.Addrs) > 0 {
-		// we already have a direct connection to this peer, so subscribe
-		glog.Infof("%v Transcoder already has a direct connection to broadcaster %v; subscribing", n.NetworkNode.ID(), bcaster)
-		return sub.Subscribe(ctx, gotData)
 	}
 	return sub.(*BasicSubscriber).TranscoderSubscribe(ctx, gotData)
 }
@@ -603,8 +591,12 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 
 func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) error {
 	glog.Infof("Handling sub req for %v", subReq.StrmID)
+	return handleSub(nw, SubReqID, subReq.StrmID, subReq, remotePID)
+}
+
+func handleSub(nw *BasicVideoNetwork, opCode Opcode, strmID string, submsg interface{}, remotePID peer.ID) error {
 	//If we have local broadcaster, just listen.
-	if b := nw.broadcasters[subReq.StrmID]; b != nil {
+	if b := nw.broadcasters[strmID]; b != nil {
 		glog.V(5).Infof("Handling subReq, adding listener %v to broadcaster", peer.IDHexEncode(remotePID))
 		//TODO: Add verification code for the SubNodeID (Make sure the message is not spoofed)
 		b.AddListeningPeer(nw, remotePID)
@@ -620,21 +612,21 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 	}
 
 	//If we have a local relayer, add to the listener
-	if r := nw.relayers[relayerMapKey(subReq.StrmID, SubReqID)]; r != nil {
+	if r := nw.relayers[relayerMapKey(strmID, SubReqID)]; r != nil {
 		r.AddListener(nw, remotePID)
 		return nil
 	}
 
 	//If we have a local subscriber (and not a relayer), create a relayer
-	if s := nw.subscribers[subReq.StrmID]; s != nil {
-		r := nw.NewRelayer(subReq.StrmID, SubReqID)
+	if s := nw.subscribers[strmID]; s != nil {
+		r := nw.NewRelayer(strmID, SubReqID)
 		r.UpstreamPeer = s.UpstreamPeer
-		lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(remotePID))
+		lpmon.Instance().LogRelay(strmID, peer.IDHexEncode(remotePID))
 		r.AddListener(nw, remotePID)
 	}
 
 	//If we don't have local broadcaster, relayer, or a subscriber, forward the sub request to the closest peer
-	peers, err := nw.NetworkNode.ClosestLocalPeers(subReq.StrmID)
+	peers, err := nw.NetworkNode.ClosestLocalPeers(strmID)
 	if err != nil {
 		glog.Errorf("Error getting closest local node: %v", err)
 		return ErrHandleMsg
@@ -654,19 +646,19 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 
 		ns := nw.NetworkNode.GetOutStream(p)
 		if ns != nil {
-			if err := nw.sendMessageWithRetry(p, ns, SubReqID, subReq); err != nil {
+			if err := nw.sendMessageWithRetry(p, ns, opCode, submsg); err != nil {
 				//Question: Do we want to close the stream here?
 				glog.Errorf("Error relaying subReq to %v: %v.", p, err)
 				continue
 			}
 
-			if r := nw.relayers[relayerMapKey(subReq.StrmID, SubReqID)]; r != nil {
+			if r := nw.relayers[relayerMapKey(strmID, SubReqID)]; r != nil {
 				r.AddListener(nw, remotePID)
 			} else {
 				glog.V(common.VERBOSE).Infof("Creating relayer for sub req")
-				r := nw.NewRelayer(subReq.StrmID, SubReqID)
+				r := nw.NewRelayer(strmID, SubReqID)
 				r.UpstreamPeer = p
-				lpmon.Instance().LogRelay(subReq.StrmID, peer.IDHexEncode(p))
+				lpmon.Instance().LogRelay(strmID, peer.IDHexEncode(p))
 				r.AddListener(nw, remotePID)
 			}
 			return nil
@@ -821,36 +813,15 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 		//return errors.New("failed to verify transcoder signature")
 	}
 	// if we're the target node, open a direct cxn. otherwise, re-transmit msg
-	targetPid, err := extractNodeID(ts.StrmID)
+	bcastPid, err := extractNodeID(ts.StrmID)
 	if err != nil {
 		glog.Errorf("Error extracting node id from streamID: %v", ts.StrmID)
 		return ErrHandleMsg
 	}
-	if peer.IDHexEncode(targetPid) != nw.GetNodeID() {
+	if string(bcastPid) != string(nw.NetworkNode.ID()) {
 		// we're not the target; re-transmit message
-		localPeers := nw.NetworkNode.GetPeers()
-		if len(localPeers) == 1 {
-			glog.Errorf("No local peers to re-transmit TranscodeSub")
-			return ErrNoClosePeers
-		}
-		peers := kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid))
-		for _, p := range peers {
-			if p == nw.NetworkNode.ID() || p == conn.RemotePeer() {
-				continue
-			}
-			glog.Infof("%v Re-transmitting TranscodeSub to %v", nw.NetworkNode.ID(), p)
-			ns := nw.NetworkNode.GetOutStream(p)
-			if ns == nil {
-				continue
-			}
-			if err = nw.sendMessageWithRetry(p, ns, TranscodeSubID, ts); err != nil {
-				glog.Errorf("Error sending SubReq to %v: %v", peer.IDHexEncode(p), err)
-				continue
-			}
-			return nil
-		}
-		glog.Errorf("Unable to propagate TranscodeSub to peer")
-		return ErrNoClosePeers
+		glog.Infof("%v Re-transmitting TranscodeSubID to peers", nw.NetworkNode.ID())
+		return handleSub(nw, TranscodeSubID, ts.StrmID, ts, conn.RemotePeer())
 	}
 	// open direct connection. first, convert multiaddrs as needed
 	mas := make([]string, len(ts.MultiAddrs))
@@ -864,12 +835,14 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 	pid := ts.NodeID
 	err = nw.Connect(peer.IDHexEncode(pid), mas)
 	if err != nil {
-		glog.Errorf("%v Unable to connect to transcoder : %v", nw.NetworkNode.ID(), err)
-		return err
+		glog.Errorf("%v Unable to connect to transcoder %v : %v", nw.NetworkNode.ID(), pid, err)
+		pid = conn.RemotePeer()
+	} else {
+		glog.Infof("%v Established direct connection to transcoder %v", nw.NetworkNode.ID(), pid)
+		// now cancel upstream listeners here since we have a direct cxn
 	}
-	glog.Infof("%v Established direct connection to transcoder %v", nw.NetworkNode.ID(), pid)
 
-	return nil
+	return handleSubReq(nw, SubReqMsg{StrmID: ts.StrmID}, pid)
 }
 
 func handleGetMasterPlaylistReq(nw *BasicVideoNetwork, remotePID peer.ID, mplr GetMasterPlaylistReqMsg) error {
