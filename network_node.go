@@ -115,11 +115,8 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNot
 func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching) (*kad.IpfsDHT, error) {
 	dhtRouting := kad.NewDHT(ctx, host, dstore)
 
-	dhtRouting.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
+	dhtRouting.Validator["v"] = func(rec *record.ValidationRecord) error {
+		return nil
 	}
 	dhtRouting.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 

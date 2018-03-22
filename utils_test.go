@@ -29,11 +29,8 @@ func setupDHT(ctx context.Context, t *testing.T, client bool) (*kad.IpfsDHT, hos
 		d = kad.NewDHT(ctx, h, dss)
 	}
 
-	d.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
+	d.Validator["v"] = func(rec *record.ValidationRecord) error {
+		return nil
 	}
 	d.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 	return d, h
