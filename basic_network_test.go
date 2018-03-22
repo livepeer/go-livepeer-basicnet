@@ -149,6 +149,30 @@ func TestStreamError(t *testing.T) {
 	}
 }
 
+func (n *BasicVideoNetwork) peerListIs(plist []peer.ID) bool {
+	a_sorted := make([]peer.ID, len(plist))
+	b_sorted := []peer.ID{}
+	copy(a_sorted, plist)
+	// exclude self from b_list
+	for _, v := range n.NetworkNode.GetPeers() {
+		if string(v) == string(n.NetworkNode.ID()) {
+			continue
+		}
+		b_sorted = append(b_sorted, v)
+	}
+	if len(a_sorted) != len(b_sorted) {
+		return false
+	}
+	sort.Sort(peer.IDSlice(a_sorted))
+	sort.Sort(peer.IDSlice(b_sorted))
+	for i := range a_sorted {
+		if string(a_sorted[i]) != string(b_sorted[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func TestSubPath(t *testing.T) {
 	glog.Infof("\n\nTesting SubPath...")
 	ctx := context.Background()
@@ -621,6 +645,11 @@ func TestTranscodeSubSeparateCxn(t *testing.T) {
 	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
 	connectHosts(n2.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
 
+	// Sanity check that no connection exists between broadcaster (n2) and sub (n1)
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #1)")
+	}
+
 	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
 	bcaster, _ := n2.GetBroadcaster(strmID)
 	result := make(map[uint64][]byte)
@@ -664,6 +693,11 @@ func TestTranscodeSubSeparateCxn(t *testing.T) {
 		if string(d) != "test data" {
 			t.Errorf("Expecting data to be 'test data', but got %v", d)
 		}
+	}
+
+	// Sanity check that a connection exists between broadcaster (n2) and sub
+	if !n2.peerListIs([]peer.ID{n1.NetworkNode.ID(), n3.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #2)")
 	}
 
 	//Call cancel
@@ -685,6 +719,11 @@ func TestTranscodeSubExistingCxn(t *testing.T) {
 	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
 	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
 
+	// Sanity check that the connection exists between broadcaster (n2) and sub
+	if !n2.peerListIs([]peer.ID{n1.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #1)")
+	}
+
 	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
 	bcaster, _ := n2.GetBroadcaster(strmID)
 	result := make(map[uint64][]byte)
@@ -728,6 +767,12 @@ func TestTranscodeSubExistingCxn(t *testing.T) {
 		if string(d) != "test data" {
 			t.Errorf("Expecting data to be 'test data', but got %v", d)
 		}
+	}
+
+	// Check that a single connection exists between broadcaster (n2) and sub
+	// and that there aren't eg, duplicate connections from the TranscodeSub
+	if !n2.peerListIs([]peer.ID{n1.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #2)")
 	}
 
 	//Call cancel
