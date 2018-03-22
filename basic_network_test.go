@@ -787,6 +787,84 @@ func TestTranscodeSubExistingCxn(t *testing.T) {
 	}
 }
 
+func TestTranscodeSubUnreachable(t *testing.T) {
+	// Tests whether a transcoder node can still receive data even if unreachable
+	n2, n3 := setupNodes(t, 15000, 15001)
+	n1, _ := setupNodes(t, 15000, 15002) // make subscriber (n1) unreachable
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n3.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+	connectHosts(n2.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	// Sanity check that no connection exists between broadcaster (n2) and sub (n1)
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #1)")
+	}
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	bcaster, _ := n2.GetBroadcaster(strmID)
+	result := make(map[uint64][]byte)
+	lock := &sync.Mutex{}
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+		// glog.Infof("Got response: %v, %v", seqNo, data)
+		lock.Lock()
+		result[seqNo] = data
+		lock.Unlock()
+	})
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if s1.cancelWorker == nil {
+		t.Errorf("Cancel function should be assigned")
+	}
+	if !s1.working {
+		t.Errorf("Subscriber should be working")
+	}
+
+	// XXX find a way to check subMsg.StrmID
+	time.Sleep(time.Millisecond * 50)
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Millisecond * 50)
+		bcaster.Broadcast(uint64(i), []byte("test data"))
+	}
+
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
+		if len(result) == 10 {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 50)
+		}
+	}
+	if len(result) != 10 {
+		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
+	}
+
+	for _, d := range result {
+		if string(d) != "test data" {
+			t.Errorf("Expecting data to be 'test data', but got %v", d)
+		}
+	}
+
+	// Ensure that no connection exists between broadcaster (n2) and sub
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Broadcaster did not have expected peer list (check #2)", n2.NetworkNode.GetPeers())
+	}
+
+	//Call cancel
+	s1.cancelWorker()
+
+	// XXX find a way to check cancelMsg.StrmID
+
+	time.Sleep(time.Millisecond * 100)
+
+	if s1.working {
+		t.Errorf("subscriber shouldn't be working after 'cancel' is called")
+	}
+
+}
+
 func TestHandleCancel(t *testing.T) {
 	n1, n2 := setupNodes(t, 15000, 15001)
 	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
