@@ -202,6 +202,13 @@ func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
 		glog.Infof("%v subscriber got a connection from a non-sub %v", conn.LocalPeer(), conn.RemotePeer())
 		return
 	}
+	// Be a good network citizen -- cancel the original sub through the relay
+	if ns := s.Network.NetworkNode.GetOutStream(s.UpstreamPeer); ns != nil {
+		if err := s.Network.sendMessageWithRetry(s.UpstreamPeer, ns, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
+			glog.Errorf("%v Unable to cancel subscription to upstream relay %s", s.Network.NetworkNode.ID(), peer.IDHexEncode(s.UpstreamPeer))
+			// continue even if error
+		}
+	}
 	// check for duplicated cxns or subs?
 	go func() {
 		ns := s.Network.NetworkNode.GetOutStream(conn.RemotePeer())

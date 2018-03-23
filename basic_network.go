@@ -689,7 +689,7 @@ func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) e
 				if err := nw.sendMessageWithRetry(r.UpstreamPeer, ns, CancelSubID, cr); err != nil {
 					glog.Errorf("Error relaying cancel message to %v: %v ", peer.IDHexEncode(r.UpstreamPeer), err)
 				}
-				return nil
+				return nil // not sure why we exit here; relayer doesn't get cleaned up
 			}
 			if _, ok := nw.subscribers[cr.StrmID]; !ok {
 				delete(nw.relayers, relayerMapKey(cr.StrmID, CancelSubID))
@@ -833,13 +833,18 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 		mas[i] = v.String()
 	}
 	pid := ts.NodeID
+	cxn_exists := nw.NetworkNode.GetPeerInfo(pid).Addrs != nil
+	// bail out early if we alread have a direct connection
+	if cxn_exists {
+		glog.Infof("%v Already have a direct connection to %v; setting up subscription", nw.NetworkNode.ID(), pid)
+		return handleSubReq(nw, SubReqMsg{StrmID: ts.StrmID}, pid)
+	}
 	err = nw.Connect(peer.IDHexEncode(pid), mas)
 	if err != nil {
 		glog.Errorf("%v Unable to connect to transcoder %v : %v", nw.NetworkNode.ID(), pid, err)
 		pid = conn.RemotePeer()
 	} else {
 		glog.Infof("%v Established direct connection to transcoder %v", nw.NetworkNode.ID(), pid)
-		// now cancel upstream listeners here since we have a direct cxn
 	}
 
 	return handleSubReq(nw, SubReqMsg{StrmID: ts.StrmID}, pid)
