@@ -18,17 +18,24 @@ import (
 var SubscriberDataInsertTimeout = time.Second * 300
 var InsertDataWaitTime = time.Second * 10
 var ErrSubscriber = errors.New("ErrSubscriber")
+var TranscodeSubTimeout = time.Second * 60
 
 //BasicSubscriber keeps track of
 type BasicSubscriber struct {
 	Network *BasicVideoNetwork
 	// host    host.Host
-	msgChan chan StreamDataMsg
+	msgChan      chan StreamDataMsg
+	subResponded context.CancelFunc
+	subAttempts  int
 	// networkStream *BasicStream
 	StrmID       string
 	UpstreamPeer peer.ID
 	working      bool
 	cancelWorker context.CancelFunc
+}
+
+func SetTranscodeSubTimeout(to time.Duration) {
+	TranscodeSubTimeout = to
 }
 
 func (s *BasicSubscriber) InsertData(sd *StreamDataMsg) error {
@@ -65,8 +72,28 @@ func (s *BasicSubscriber) TranscoderSubscribe(ctx context.Context, gotData func(
 	}
 	ts.Sig = sig
 	s.Network.NetworkNode.Host().Network().Notify(s)
-	glog.Infof("%v Sending TranscodeSub message", s.Network.NetworkNode.ID())
-	return s.sendSub(ctx, TranscodeSubID, ts, gotData)
+	glog.Infof("%v Sending TranscodeSub message for %v", s.Network.NetworkNode.ID(), s.StrmID)
+
+	// periodic retransmit in case the broadcaster misses the first message(s)
+	// XXX should terminate after endBlock is reached if still going
+	sendCtx, sendCancel := context.WithCancel(context.Background())
+	s.subResponded = sendCancel
+
+	go func() {
+		for {
+			s.subAttempts++
+			s.sendSub(ctx, TranscodeSubID, ts, gotData)
+			timer := time.NewTimer(TranscodeSubTimeout)
+			select {
+			case <-sendCtx.Done():
+				glog.Infof("%v Stopping TranscodeSub retransmit timer for %v", s.Network.NetworkNode.ID(), s.StrmID)
+				return
+			case <-timer.C:
+				glog.Infof("%v Retransmitting TranscodeSub for %v", s.Network.NetworkNode.ID(), s.StrmID)
+			}
+		}
+	}()
+	return nil
 }
 
 func (s *BasicSubscriber) sendSub(ctx context.Context, opCode Opcode, msg interface{}, gotData func(seqNo uint64, data []byte, eof bool)) error {
@@ -93,6 +120,20 @@ func (s *BasicSubscriber) sendSub(ctx context.Context, opCode Opcode, msg interf
 		glog.Errorf("Error extracting node id from streamID: %v", s.StrmID)
 		return ErrSubscriber
 	}
+	if s.IsLive() {
+		// this is a re-transmission; reuse the same relay
+		// avoids clobbering the context/worker
+		ns := s.Network.NetworkNode.GetOutStream(s.UpstreamPeer)
+		if ns != nil {
+			err = s.Network.sendMessageWithRetry(s.UpstreamPeer, ns, opCode, msg)
+			if err != nil {
+				glog.Errorf("%v Error sending message %v to %v", s.Network.NetworkNode.ID(), opCode, s.UpstreamPeer)
+				return err
+			}
+			return nil
+		} // no outstream? so continue and maybe find another peer?
+	}
+
 	peers := kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid))
 
 	for _, p := range peers {
@@ -125,7 +166,7 @@ func (s *BasicSubscriber) sendSub(ctx context.Context, opCode Opcode, msg interf
 }
 
 func (s *BasicSubscriber) startWorker(ctxW context.Context, ws *BasicOutStream, gotData func(seqNo uint64, data []byte, eof bool)) {
-	//We expect DataStreamMsg to come back
+	//We expect StreamDataMsg to come back
 	go func() {
 		for {
 			//Get message from the msgChan (inserted from the network by StreamDataMsg)
@@ -135,10 +176,16 @@ func (s *BasicSubscriber) startWorker(ctxW context.Context, ws *BasicOutStream, 
 			select {
 			case msg := <-s.msgChan:
 				networkWaitTime := time.Since(start)
+				if s.subResponded != nil {
+					s.subResponded()
+				}
 				go gotData(msg.SeqNo, msg.Data, false)
 				glog.V(common.DEBUG).Infof("Subscriber worker inserted segment: %v - took %v in total, %v waiting for data", msg.SeqNo, time.Since(start), networkWaitTime)
 			case <-ctxW.Done():
 				// s.networkStream = nil
+				if s.subResponded != nil {
+					s.subResponded() // just in case it's still waiting
+				}
 				s.working = false
 				glog.Infof("Done with subscription, sending CancelSubMsg")
 				//Send EOF
@@ -202,21 +249,26 @@ func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
 		glog.Infof("%v subscriber got a connection from a non-sub %v", conn.LocalPeer(), conn.RemotePeer())
 		return
 	}
-	// Be a good network citizen -- cancel the original sub through the relay
-	if ns := s.Network.NetworkNode.GetOutStream(s.UpstreamPeer); ns != nil {
-		if err := s.Network.sendMessageWithRetry(s.UpstreamPeer, ns, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
-			glog.Errorf("%v Unable to cancel subscription to upstream relay %s", s.Network.NetworkNode.ID(), peer.IDHexEncode(s.UpstreamPeer))
-			// continue even if error
-		}
-	}
-	// check for duplicated cxns or subs?
+	glog.Infof("%v Being a good network citizen to %v; processing", conn.LocalPeer(), conn.RemotePeer())
 	go func() {
+		// Be a good network citizen -- cancel the original sub through the relay
+		if ns := s.Network.NetworkNode.GetOutStream(s.UpstreamPeer); ns != nil {
+			if err := s.Network.sendMessageWithRetry(s.UpstreamPeer, ns, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
+				glog.Errorf("%v Unable to cancel subscription to upstream relay %s", s.Network.NetworkNode.ID(), peer.IDHexEncode(s.UpstreamPeer))
+			}
+		}
+		// check for duplicated cxns or subs?
 		ns := s.Network.NetworkNode.GetOutStream(conn.RemotePeer())
 		if ns == nil {
 			glog.Errorf("%v Unable to create an outstream with %v", conn.LocalPeer(), conn.RemotePeer())
 			return
 		}
 		s.UpstreamPeer = conn.RemotePeer()
+		if s.subResponded != nil {
+			s.subResponded()
+		} else {
+			glog.Errorf("Received a direct cxn from broadcaster without corresponding TranscodeSub; how did this happen? StrmID %v", s.StrmID)
+		}
 		glog.Infof("%v Subscriber got direct connection from %v", conn.LocalPeer(), conn.RemotePeer())
 	}()
 }
