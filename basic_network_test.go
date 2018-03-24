@@ -660,6 +660,7 @@ func TestTranscodeSubSeparateCxn(t *testing.T) {
 		result[seqNo] = data
 		lock.Unlock()
 	})
+	time.Sleep(time.Millisecond * 50) // allow TranscodeSub goroutine to run
 
 	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
@@ -740,6 +741,7 @@ func TestTranscodeSubExistingCxn(t *testing.T) {
 		result[seqNo] = data
 		lock.Unlock()
 	})
+	time.Sleep(time.Millisecond * 50) // allow TranscodeSub goroutine to run
 
 	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
@@ -818,14 +820,15 @@ func TestTranscodeSubUnreachable(t *testing.T) {
 		result[seqNo] = data
 		lock.Unlock()
 	})
+	time.Sleep(time.Millisecond * 50) // allow TranscodeSub goroutine to run
 
 	s1tmp, _ := n1.GetSubscriber(strmID)
 	s1, _ := s1tmp.(*BasicSubscriber)
 	if s1.cancelWorker == nil {
-		t.Errorf("Cancel function should be assigned")
+		t.Error("Cancel function should be assigned")
 	}
 	if !s1.working {
-		t.Errorf("Subscriber should be working")
+		t.Error("Subscriber should be working")
 	}
 
 	// XXX find a way to check subMsg.StrmID
