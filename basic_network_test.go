@@ -875,9 +875,276 @@ func TestTranscodeSubUnreachable(t *testing.T) {
 	time.Sleep(time.Millisecond * 100)
 
 	if s1.working {
-		t.Errorf("subscriber shouldn't be working after 'cancel' is called")
+		t.Error("subscriber shouldn't be working after 'cancel' is called")
 	}
 
+}
+
+func TestTranscodeSubDelayedDirect(t *testing.T) {
+	// Check that TranscodeSub is OK with delayed direct connections
+
+	// XXX Add another 'direct' test: when already connected but the response
+	//     is just slow to come through on the wire. In theory that should
+	//     trigger cancellations by the *data* handler, not the connection
+	//     notifiee.
+	// XXX Is the flow the same with connects + disc + reconnects?
+	// 	   This is where stubs would come in handy.
+
+	n1, n2 := setupNodes(t, 15000, 15001)
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	bcaster, _ := n2.GetBroadcaster(strmID)
+	result := make(map[uint64][]byte)
+	lock := &sync.Mutex{}
+	SetTranscodeSubTimeout(25 * time.Millisecond) // speed up for testing
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+		// glog.Infof("Got response: %v, %v", seqNo, data)
+		lock.Lock()
+		result[seqNo] = data
+		lock.Unlock()
+	})
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if s1.subAttempts < 2 {
+		t.Error("Did not try to re-transmit a few times")
+	}
+	if len(result) != 0 {
+		t.Error("Somehow got results when there should have been none")
+	}
+	// Sanity check that there are *no* connections; we want it to fail
+	if !n2.peerListIs([]peer.ID{}) || !n1.peerListIs([]peer.ID{}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+	nbRetries := s1.subAttempts
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Millisecond * 50)
+		bcaster.Broadcast(uint64(i), []byte("test data"))
+	}
+
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
+		if len(result) == 10 {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 50)
+		}
+	}
+	if len(result) != 10 {
+		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
+	}
+	for _, d := range result {
+		if string(d) != "test data" {
+			t.Errorf("Expecting data to be 'test data', but got %v", d)
+		}
+	}
+	if nbRetries != s1.subAttempts {
+		t.Error("Re-transmission of TranscodeSub did not stop")
+	}
+
+	//Call cancel
+	s1.cancelWorker()
+	// XXX find a way to check cancelMsg.StrmID
+	time.Sleep(time.Millisecond * 100)
+	if s1.working {
+		t.Error("subscriber shouldn't be working after 'cancel' is called")
+	}
+}
+
+func TestTranscodeSubDelayedRelay(t *testing.T) {
+	n1, n2 := setupNodes(t, 15000, 15001)
+	n3, _ := setupNodes(t, 15002, 15003)
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n3.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	bcaster, _ := n2.GetBroadcaster(strmID)
+	result := make(map[uint64][]byte)
+	lock := &sync.Mutex{}
+	SetTranscodeSubTimeout(25 * time.Millisecond) // speed up for testing
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+		// glog.Infof("Got response: %v, %v", seqNo, data)
+		lock.Lock()
+		result[seqNo] = data
+		lock.Unlock()
+	})
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if s1.subAttempts < 2 {
+		t.Error("Did not try to re-transmit a few times")
+	}
+	if len(result) != 0 {
+		t.Error("Somehow got results when there should have been none")
+	}
+	// Sanity check that there are *no* connections to n2; we want it to fail
+	if !n2.peerListIs([]peer.ID{}) || !n1.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	connectHosts(n3.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+	nbRetries := s1.subAttempts
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Millisecond * 50)
+		bcaster.Broadcast(uint64(i), []byte("test data"))
+	}
+
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
+		if len(result) == 10 {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 50)
+		}
+	}
+	if len(result) != 10 {
+		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
+	}
+	for _, d := range result {
+		if string(d) != "test data" {
+			t.Errorf("Expecting data to be 'test data', but got %v", d)
+		}
+	}
+	if nbRetries != s1.subAttempts {
+		t.Error("Re-transmission of TranscodeSub did not stop")
+	}
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID(), n1.NetworkNode.ID()}) ||
+		!n1.peerListIs([]peer.ID{n3.NetworkNode.ID(), n2.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	//Call cancel
+	s1.cancelWorker()
+	// XXX find a way to check cancelMsg.StrmID
+	time.Sleep(time.Millisecond * 100)
+	if s1.working {
+		t.Error("subscriber shouldn't be working after 'cancel' is called")
+	}
+}
+
+func TestTranscodeSubDelayedUnreachable(t *testing.T) {
+	// This particular test tries to hit the case where the direct cxn is
+	// never established, so we need to cancel the TranscodeSub retransmission
+	// upon receipt of our first data message.
+	n2, n3 := setupNodes(t, 15000, 15001)
+	n1, _ := setupNodes(t, 15000, 15000) // make subscriber (n1) unreachable
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n3.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	bcaster, _ := n2.GetBroadcaster(strmID)
+	result := make(map[uint64][]byte)
+	lock := &sync.Mutex{}
+	SetTranscodeSubTimeout(25 * time.Millisecond) // speed up for testing
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+		// glog.Infof("Got response: %v, %v", seqNo, data)
+		lock.Lock()
+		result[seqNo] = data
+		lock.Unlock()
+	})
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if s1.subAttempts < 2 {
+		t.Error("Did not try to re-transmit a few times")
+	}
+	if len(result) != 0 {
+		t.Error("Somehow got results when there should have been none")
+	}
+	// Sanity check that there are *no* connections to n2; we want it to fail
+	if !n2.peerListIs([]peer.ID{}) || !n1.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	connectHosts(n3.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+	// s.subAttempts will iterate until receiving the first broadcasted segment
+	var nbRetries int
+
+	for i := 0; i < 10; i++ {
+		time.Sleep(time.Millisecond * 50)
+		bcaster.Broadcast(uint64(i), []byte("test data"))
+		if i == 0 {
+			nbRetries = s1.subAttempts // should approximately stop here
+		}
+	}
+
+	for start := time.Now(); time.Since(start) < 3*time.Second; {
+		if len(result) == 10 {
+			break
+		} else {
+			time.Sleep(time.Millisecond * 50)
+		}
+	}
+	if len(result) != 10 {
+		t.Errorf("Expecting length of result to be 10, but got %v: %v", len(result), result)
+	}
+	for _, d := range result {
+		if string(d) != "test data" {
+			t.Errorf("Expecting data to be 'test data', but got %v", d)
+		}
+	}
+	if nbRetries != s1.subAttempts {
+		t.Error("Re-transmission of TranscodeSub did not stop")
+	}
+	// verify we're still being relayed
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) ||
+		!n1.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	//Call cancel
+	s1.cancelWorker()
+	// XXX find a way to check cancelMsg.StrmID
+	time.Sleep(time.Millisecond * 100)
+	if s1.working {
+		t.Error("subscriber shouldn't be working after 'cancel' is called")
+	}
+}
+
+func TestTranscodeSubDelayedCancel(t *testing.T) {
+	// Check that retransmission stops if we cancel before receiving a response
+	n1, n2 := setupNodes(t, 15000, 15001)
+	n3, _ := setupNodes(t, 15002, 15003)
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n3.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	SetTranscodeSubTimeout(25 * time.Millisecond) // speed up for testing
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+	})
+
+	time.Sleep(time.Millisecond * 100) // allow TranscodeSub goroutine to run
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if s1.subAttempts < 2 {
+		t.Error("Did not try to re-transmit a few times")
+	}
+	s1.cancelWorker()
+	nbRetries := s1.subAttempts
+	time.Sleep(time.Millisecond * 100)
+	if nbRetries != s1.subAttempts {
+		t.Error("Re-transmission of TranscodeSub did not stop")
+	}
+	if s1.working {
+		t.Error("subscriber shouldn't be working after 'cancel' is called")
+	}
 }
 
 func TestHandleCancel(t *testing.T) {
