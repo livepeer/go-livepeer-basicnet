@@ -809,8 +809,7 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 	glog.Infof("%v In handleTranscodeSub; received from %v", nw.NetworkNode.ID(), conn.RemotePeer())
 	ok := nw.NetworkNode.VerifyTranscoderSig(ts.BytesForSigning(), ts.Sig, ts.StrmID)
 	if !ok {
-		// XXX fix this; need capability to check sig in calling app
-		//return errors.New("failed to verify transcoder signature")
+		return ErrHandleMsg
 	}
 	// if we're the target node, open a direct cxn. otherwise, re-transmit msg
 	bcastPid, err := extractNodeID(ts.StrmID)
@@ -827,7 +826,7 @@ func handleTranscodeSub(nw *BasicVideoNetwork, conn net.Conn, ts TranscodeSubMsg
 	mas := make([]string, len(ts.MultiAddrs))
 	if len(ts.MultiAddrs) <= 0 {
 		glog.Errorf("No multiaddrs; can't establish direct cxn to transcoder")
-		return ErrBadMultiaddrs
+		return ErrHandleMsg
 	}
 	for i, v := range ts.MultiAddrs {
 		mas[i] = v.String()

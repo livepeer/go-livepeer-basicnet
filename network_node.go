@@ -215,7 +215,7 @@ func (n *BasicNetworkNode) SetVerifyTranscoderSig(verify func(data []byte, sig [
 
 func (n *BasicNetworkNode) VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool {
 	if n.verify == nil {
-		return false
+		return true // XXX change to false once we can verify sigs
 	}
 	return n.verify(data, sig, strmID)
 }
