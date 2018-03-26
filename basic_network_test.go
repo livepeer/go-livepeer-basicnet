@@ -636,6 +636,61 @@ func TestSendSubscribe(t *testing.T) {
 	}
 }
 
+func TestTranscodeSubVerificationFail(t *testing.T) {
+	// only way we really have to check for failed TranscodeSub sig verification
+	// is to check some counters and ensure a connection isn't established
+	n1, n2 := setupNodes(t, 15000, 15001)
+	n3, _ := setupNodes(t, 15002, 15003)
+	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n2.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	defer n3.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
+	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+	connectHosts(n2.NetworkNode.(*BasicNetworkNode).PeerHost, n3.NetworkNode.(*BasicNetworkNode).PeerHost)
+
+	// this should stop the transmission in the middle
+	n3.NetworkNode.SetVerifyTranscoderSig(func([]byte, []byte, string) bool {
+		return false
+	})
+
+	// Sanity check that we do have connections
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) || !n1.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(n2.NetworkNode.(*BasicNetworkNode).Identity))
+	result := make(map[uint64][]byte)
+	lock := &sync.Mutex{}
+	SetTranscodeSubTimeout(25 * time.Millisecond) // speed up for testing
+
+	n1.TranscodeSub(context.Background(), strmID, func(seqNo uint64, data []byte, eof bool) {
+		// glog.Infof("Got response: %v, %v", seqNo, data)
+		lock.Lock()
+		result[seqNo] = data
+		lock.Unlock()
+	})
+	time.Sleep(time.Millisecond * 110) // allow TranscodeSub goroutine to run
+
+	// check connection set is the same and a direct cxn wasn't established
+	if !n2.peerListIs([]peer.ID{n3.NetworkNode.ID()}) || !n1.peerListIs([]peer.ID{n3.NetworkNode.ID()}) {
+		t.Error("Did not have expected peer list")
+	}
+
+	s1tmp, _ := n1.GetSubscriber(strmID)
+	s1, _ := s1tmp.(*BasicSubscriber)
+	if n3.msgCounts[TranscodeSubID] < 2 || s1.subAttempts < 2 {
+		t.Error("Did not try to re-transmit a few times")
+	}
+	if n3.msgCounts[TranscodeSubID] != int64(s1.subAttempts) {
+		t.Error("Did not receive the expected number of transcode subs")
+	}
+	if n2.msgCounts[TranscodeSubID] > 0 {
+		t.Error("Should not have received any transcode sub requests")
+	}
+	if len(result) != 0 {
+		t.Error("Somehow got results when there should have been none")
+	}
+}
+
 func TestTranscodeSubSeparateCxn(t *testing.T) {
 	n1, n3 := setupNodes(t, 15000, 15001)
 	n2, _ := setupNodes(t, 15002, 15003)
