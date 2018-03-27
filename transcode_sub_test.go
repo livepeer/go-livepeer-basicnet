@@ -160,7 +160,7 @@ func TestTranscodeSubSeparateCxn(t *testing.T) {
 	// Ensure that the relay no longer has the stream
 	if n1.getSubscriber(strmID) == nil ||
 		bcaster.(*BasicBroadcaster).listeners[peer.IDHexEncode(n1.NetworkNode.ID())] == nil ||
-		len(n3.relayers[relayerMapKey(strmID, SubReqID)].listeners) != 0 {
+		n3.relayers[relayerMapKey(strmID, SubReqID)] != nil {
 		t.Error("Subscriptions not set up as expected on nodes", n3.NetworkNode.ID(), n3.relayers)
 	}
 
@@ -326,7 +326,7 @@ func TestTranscodeSubUnreachable(t *testing.T) {
 	// Ensure that the relay still has the stream
 	if n1.getSubscriber(strmID) == nil ||
 		bcaster.(*BasicBroadcaster).listeners[peer.IDHexEncode(n3.NetworkNode.ID())] == nil ||
-		n3.relayers[relayerMapKey(strmID, SubReqID)].listeners[peer.IDHexEncode(n1.NetworkNode.ID())] == nil {
+		n3.relayers[relayerMapKey(strmID, SubReqID)] == nil || n3.relayers[relayerMapKey(strmID, SubReqID)].listeners[peer.IDHexEncode(n1.NetworkNode.ID())] == nil {
 		t.Error("Subscriptions not set up as expected on nodes")
 	}
 
