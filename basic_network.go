@@ -718,10 +718,9 @@ func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) e
 				if err := nw.sendMessageWithRetry(r.UpstreamPeer, ns, CancelSubID, cr); err != nil {
 					glog.Errorf("Error relaying cancel message to %v: %v ", peer.IDHexEncode(r.UpstreamPeer), err)
 				}
-				return nil
 			}
 			if _, ok := nw.subscribers[cr.StrmID]; !ok {
-				delete(nw.relayers, relayerMapKey(cr.StrmID, CancelSubID))
+				delete(nw.relayers, relayerMapKey(cr.StrmID, SubReqID))
 			}
 		}
 		return nil
