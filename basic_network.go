@@ -36,7 +36,6 @@ var ErrProtocol = errors.New("ProtocolError")
 var ErrHandleMsg = errors.New("ErrHandleMsg")
 var ErrTranscodeResponse = errors.New("TranscodeResponseError")
 var ErrGetMasterPlaylist = errors.New("ErrGetMasterPlaylist")
-var ErrBadMultiaddrs = errors.New("BadMultiaddrs")
 var GetMasterPlaylistRelayWait = 10 * time.Second
 var GetResponseWithRelayWait = 10 * time.Second
 
