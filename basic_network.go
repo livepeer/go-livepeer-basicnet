@@ -100,7 +100,7 @@ func NewBasicVideoNetwork(n *BasicNetworkNode, workDir string) (*BasicVideoNetwo
 
 	//Set up a worker to write connections
 	if workDir != "" {
-		peerCache := NewPeerCache(n.PeerHost.Peerstore(), fmt.Sprintf("%v/conn", workDir))
+		peerCache := NewPeerCache(n.GetStore(), fmt.Sprintf("%v/conn", workDir))
 		peers := peerCache.LoadPeers()
 		for _, p := range peers {
 			glog.Infof("Connecting to cached peer: %v", p)

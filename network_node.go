@@ -30,6 +30,7 @@ type NetworkNode interface {
 	GetOutStream(pid peer.ID) *BasicOutStream
 	RefreshOutStream(pid peer.ID) *BasicOutStream
 	RemoveStream(pid peer.ID)
+	GetStore() peerstore.Peerstore
 	GetPeers() []peer.ID
 	GetPeerInfo(peer.ID) peerstore.PeerInfo
 	Connect(context.Context, peerstore.PeerInfo) error
@@ -160,6 +161,10 @@ func (n *BasicNetworkNode) RemoveStream(pid peer.ID) {
 
 func (n *BasicNetworkNode) ID() peer.ID {
 	return n.Identity
+}
+
+func (n *BasicNetworkNode) GetStore() peerstore.Peerstore {
+	return n.PeerHost.Peerstore()
 }
 
 func (n *BasicNetworkNode) GetPeers() []peer.ID {
