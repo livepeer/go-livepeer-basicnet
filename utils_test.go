@@ -1,22 +1,188 @@
 package basicnet
 
 import (
+	"bufio"
 	"context"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
+	inet "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
+	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
 	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
 	netutil "gx/ipfs/QmQGX417WoxKxDJeHqouMEmmH4G1RCENNSzkZYHrXy3Xb3/go-libp2p-netutil"
+	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
 	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
 	dssync "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore/sync"
+	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
 	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	bhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/basic"
 	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
 	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 
+	multicodec "github.com/multiformats/go-multicodec"
+
 	"github.com/golang/glog"
 )
+
+type StubConn struct {
+}
+
+func (c *StubConn) Close() error {
+	return nil
+}
+func (c *StubConn) GetStreams() ([]net.Stream, error) {
+	return []net.Stream{}, nil
+}
+
+/*
+type StubStream struct {
+	prot protocol.ID
+}
+
+func NewStubStream(pid protocol.ID) *StubStream {
+	return &StubStream{prot: pid}
+}
+func (s *StubStream) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+func (s *StubStream) Read(p []byte) (n int, err error) {
+	return len(p), nil
+}
+func (s *StubStream) Conn() inet.Conn {
+	return &StubConn{}
+}
+func (s *StubStream) Close() error {
+	return nil
+}
+func (s *StubStream) Reset() error {
+	return nil
+}
+func (s *StubStream) Protocol() protocol.ID {
+	return s.prot
+}
+func (s *StubStream) SetProtocol(pid protocol.ID) {
+	s.prot = pid
+}
+func (s *StubStream) SetDeadline(t time.Time) error {
+	return nil
+}
+func (s *StubStream) SetReadDeadline(t time.Time) error {
+	return nil
+}
+func (s *StubStream) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+*/
+
+type FooStream struct {
+	enc  multicodec.Encoder
+	w    *bufio.Writer
+	el   *sync.Mutex
+	peer peer.ID
+}
+
+func (s *FooStream) GetRemotePeer() peer.ID {
+	return s.peer
+}
+
+func (s *FooStream) SendMessage(opCode Opcode, data interface{}) error {
+	return nil
+}
+
+type StubNode struct {
+	port           int
+	id             peer.ID
+	store          peerstore.Peerstore
+	kad            *kad.IpfsDHT
+	outStreams     map[peer.ID]OutStream
+	outStreamsLock *sync.Mutex
+	//peers []peerstore.PeerInfo
+}
+
+func NewStubNode(listen_port int) (*StubNode, error) {
+	pid := peer.ID(strconv.Itoa(listen_port))
+	s := StubNode{
+		id:             pid,
+		port:           listen_port,
+		store:          peerstore.NewPeerstore(),
+		outStreamsLock: &sync.Mutex{},
+		outStreams:     make(map[peer.ID]*FooStream),
+	}
+	return &s, nil
+}
+
+func (s *StubNode) ID() peer.ID {
+	return s.id
+}
+func (s *StubNode) GetDHT() *kad.IpfsDHT {
+	return s.kad
+}
+func (s *StubNode) GetStore() peerstore.Peerstore {
+	return s.store
+}
+func (s *StubNode) GetPeers() []peer.ID {
+	return s.store.Peers()
+}
+func (s *StubNode) GetPeerInfo(p peer.ID) peerstore.PeerInfo {
+	return s.store.PeerInfo(p)
+}
+func (s *StubNode) AddPeer(pi peerstore.PeerInfo, ttl time.Duration) {
+	s.store.AddAddrs(pi.ID, pi.Addrs, ttl)
+}
+func (s *StubNode) RemovePeer(id peer.ID) {
+	s.store.ClearAddrs(id)
+}
+
+func (s *StubNode) Connect(ctx context.Context, pi peerstore.PeerInfo) error {
+	return nil
+}
+func (s *StubNode) ClosestLocalPeers(strmID string) ([]peer.ID, error) {
+	targetPid, err := extractNodeID(strmID)
+	if err != nil {
+		glog.Errorf("Error extracting node id from streamID: %v", strmID)
+		return nil, ErrSubscriber
+	}
+	localPeers := s.store.Peers()
+	if len(localPeers) == 1 {
+		glog.Errorf("No local peers")
+		return nil, ErrSubscriber
+	}
+
+	return kb.SortClosestPeers(localPeers, kb.ConvertPeerID(targetPid)), nil
+}
+func (s *StubNode) GetOutStream(pid peer.ID) OutStream {
+	s.outStreamsLock.Lock()
+	strm, ok := s.outStreams[pid]
+	if !ok {
+		strm = s.RefreshOutStream(pid)
+	}
+	s.outStreamsLock.Unlock()
+	return strm
+}
+func (s *StubNode) RefreshOutStream(pid peer.ID) *BasicOutStream {
+	glog.Infof("%v Creating stream from to %v", s.id, pid)
+	if s, ok := s.outStreams[pid]; ok {
+		if err := s.Stream.Reset(); err != nil {
+			glog.Errorf("Error resetting connetion: %v", err)
+		}
+	}
+	ns := NewStubStream(Protocol)
+	strm := NewBasicOutStream(ns)
+	s.outStreams[pid] = strm
+	return strm
+}
+func (n *StubNode) RemoveStream(pid peer.ID) {
+	// glog.Infof("Removing stream for %v", peer.IDHexEncode(pid))
+	n.outStreamsLock.Lock()
+	delete(n.outStreams, pid)
+	n.outStreamsLock.Unlock()
+}
+func (s *StubNode) SetStreamHandler(pid protocol.ID, handler inet.StreamHandler) {
+}
 
 func setupDHT(ctx context.Context, t *testing.T, client bool) (*kad.IpfsDHT, host.Host) {
 	h := bhost.New(netutil.GenSwarmNetwork(t, ctx))
@@ -71,15 +237,21 @@ func setupDHTS(ctx context.Context, n int, t *testing.T) ([]*kad.IpfsDHT, []host
 }
 
 func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwork) {
-	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
+	/*
+		priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+		no1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
+	*/
+	no1, _ := NewStubNode(p1)
 	n1, _ := NewBasicVideoNetwork(no1, "")
 	if err := n1.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
 	}
 
-	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
+	/*
+		priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
+		no2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
+	*/
+	no2, _ := NewStubNode(p2)
 	n2, _ := NewBasicVideoNetwork(no2, "")
 	if err := n2.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
