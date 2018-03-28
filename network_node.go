@@ -27,8 +27,8 @@ import (
 
 type NetworkNode interface {
 	ID() peer.ID
-	GetOutStream(pid peer.ID) *BasicOutStream
-	RefreshOutStream(pid peer.ID) *BasicOutStream
+	GetOutStream(pid peer.ID) OutStream
+	RefreshOutStream(pid peer.ID) OutStream
 	RemoveStream(pid peer.ID)
 	GetStore() peerstore.Peerstore
 	GetPeers() []peer.ID
@@ -124,17 +124,17 @@ func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching
 	return dhtRouting, nil
 }
 
-func (n *BasicNetworkNode) GetOutStream(pid peer.ID) *BasicOutStream {
+func (n *BasicNetworkNode) GetOutStream(pid peer.ID) OutStream {
 	n.outStreamsLock.Lock()
 	strm, ok := n.outStreams[pid]
 	if !ok {
-		strm = n.RefreshOutStream(pid)
+		strm = n.RefreshOutStream(pid).(*BasicOutStream)
 	}
 	n.outStreamsLock.Unlock()
 	return strm
 }
 
-func (n *BasicNetworkNode) RefreshOutStream(pid peer.ID) *BasicOutStream {
+func (n *BasicNetworkNode) RefreshOutStream(pid peer.ID) OutStream {
 	// glog.Infof("Creating stream from %v to %v", peer.IDHexEncode(n.Identity), peer.IDHexEncode(pid))
 	if s, ok := n.outStreams[pid]; ok {
 		if err := s.Stream.Reset(); err != nil {

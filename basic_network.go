@@ -161,7 +161,7 @@ func (n *BasicVideoNetwork) getSubscriber(strmID string) *BasicSubscriber {
 
 //NewRelayer creates a new relayer.
 func (n *BasicVideoNetwork) NewRelayer(strmID string, opcode Opcode) *BasicRelayer {
-	r := &BasicRelayer{listeners: make(map[string]*BasicOutStream), Network: n}
+	r := &BasicRelayer{listeners: make(map[string]OutStream), Network: n}
 	n.relayers[relayerMapKey(strmID, opcode)] = r
 	go func() {
 		timer := time.NewTicker(RelayTicker)

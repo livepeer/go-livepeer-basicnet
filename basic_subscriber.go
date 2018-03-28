@@ -100,7 +100,7 @@ func (s *BasicSubscriber) Subscribe(ctx context.Context, gotData func(seqNo uint
 	//Call gotData for every new piece of data
 }
 
-func (s *BasicSubscriber) startWorker(ctxW context.Context, ws *BasicOutStream, gotData func(seqNo uint64, data []byte, eof bool)) {
+func (s *BasicSubscriber) startWorker(ctxW context.Context, ws OutStream, gotData func(seqNo uint64, data []byte, eof bool)) {
 	//We expect DataStreamMsg to come back
 	go func() {
 		for {
@@ -120,7 +120,7 @@ func (s *BasicSubscriber) startWorker(ctxW context.Context, ws *BasicOutStream, 
 				//Send EOF
 				go gotData(0, nil, true)
 				if ws != nil {
-					if err := s.Network.sendMessageWithRetry(ws.Stream.Conn().RemotePeer(), ws, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
+					if err := s.Network.sendMessageWithRetry(ws.GetRemotePeer(), ws, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
 						glog.Errorf("Error sending CancelSubMsg during worker cancellation: %v", err)
 					}
 				}

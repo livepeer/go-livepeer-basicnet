@@ -14,7 +14,7 @@ import (
 type BasicRelayer struct {
 	Network      *BasicVideoNetwork
 	UpstreamPeer peer.ID
-	listeners    map[string]*BasicOutStream
+	listeners    map[string]OutStream
 	LastRelay    time.Time
 }
 
@@ -23,7 +23,7 @@ func (br *BasicRelayer) RelayStreamData(sd *StreamDataMsg) error {
 	for strmID, l := range br.listeners {
 		// glog.V(5).Infof("Relaying stream data to listener: %v", l)
 		// glog.Infof("Relaying stream data to listener: %v.", peer.IDHexEncode(l.Stream.Conn().RemotePeer()))
-		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, StreamDataID, *sd); err != nil {
+		if err := br.Network.sendMessageWithRetry(l.GetRemotePeer(), l, StreamDataID, *sd); err != nil {
 			glog.Errorf("Error writing data to relayer listener %v: %v", l, err)
 			delete(br.listeners, strmID)
 		}
@@ -34,8 +34,8 @@ func (br *BasicRelayer) RelayStreamData(sd *StreamDataMsg) error {
 
 func (br *BasicRelayer) RelayFinishStream(nw *BasicVideoNetwork, fs FinishStreamMsg) error {
 	for strmID, l := range br.listeners {
-		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, FinishStreamID, fs); err != nil {
-			glog.Errorf("Error relaying finish stream to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+		if err := br.Network.sendMessageWithRetry(l.GetRemotePeer(), l, FinishStreamID, fs); err != nil {
+			glog.Errorf("Error relaying finish stream to %v: %v", peer.IDHexEncode(l.GetRemotePeer()), err)
 			delete(br.listeners, strmID)
 		}
 		br.LastRelay = time.Now()
@@ -45,8 +45,8 @@ func (br *BasicRelayer) RelayFinishStream(nw *BasicVideoNetwork, fs FinishStream
 
 func (br *BasicRelayer) RelayMasterPlaylistData(nw *BasicVideoNetwork, mpld MasterPlaylistDataMsg) error {
 	for strmID, l := range br.listeners {
-		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, MasterPlaylistDataID, mpld); err != nil {
-			glog.Errorf("Error relaying master playlist data to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+		if err := br.Network.sendMessageWithRetry(l.GetRemotePeer(), l, MasterPlaylistDataID, mpld); err != nil {
+			glog.Errorf("Error relaying master playlist data to %v: %v", peer.IDHexEncode(l.GetRemotePeer()), err)
 			delete(br.listeners, strmID)
 		}
 		br.LastRelay = time.Now()
@@ -56,8 +56,8 @@ func (br *BasicRelayer) RelayMasterPlaylistData(nw *BasicVideoNetwork, mpld Mast
 
 func (br *BasicRelayer) RelayNodeStatusData(nw *BasicVideoNetwork, nsd NodeStatusDataMsg) error {
 	for id, l := range br.listeners {
-		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, NodeStatusDataID, nsd); err != nil {
-			glog.Errorf("Error relaying node status data to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+		if err := br.Network.sendMessageWithRetry(l.GetRemotePeer(), l, NodeStatusDataID, nsd); err != nil {
+			glog.Errorf("Error relaying node status data to %v: %v", peer.IDHexEncode(l.GetRemotePeer()), err)
 			delete(br.listeners, id)
 		}
 		br.LastRelay = time.Now()
