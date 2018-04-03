@@ -253,10 +253,7 @@ func TestTranscodeSubExistingCxn(t *testing.T) {
 	}
 }
 
-/*
-XXX make this test run smoothly alongside everything else.
-    seems to run fine standalone?
-	the conflicting ports give very strange behavior
+//	the conflicting ports give very strange behavior
 func TestTranscodeSubUnreachable(t *testing.T) {
 	glog.Infof("\n\nTesting TranscodesubUnreachable...")
 	// Tests whether a transcoder node can still receive data even if unreachable
@@ -342,7 +339,6 @@ func TestTranscodeSubUnreachable(t *testing.T) {
 	}
 
 }
-*/
 
 func TestTranscodeSubDelayedDirect(t *testing.T) {
 	// Check that TranscodeSub is OK with delayed direct connections
