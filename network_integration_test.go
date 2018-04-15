@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"errors"
 	"github.com/ericxtang/m3u8"
 	"github.com/golang/glog"
 )
@@ -23,7 +24,7 @@ func init() {
      flag.Lookup("v").Value.Set(logLevel)
 }
 
-func createNetwork(n int, networkTopo string) ([]*NetworkNode, []*BasicVideoNetwork) {
+func createNetwork(n int, networkTopo string) ([]*NetworkNode, []*BasicVideoNetwork, error) {
     nodes := make([]*NetworkNode,n,n) 
     vn := make([]*BasicVideoNetwork, n,n)
     for  i:= 0; i < n ; i++ {
@@ -32,6 +33,7 @@ func createNetwork(n int, networkTopo string) ([]*NetworkNode, []*BasicVideoNetw
 	vn[i],_ = NewBasicVideoNetwork(nodes[i], "")
 	if err := vn[i].SetupProtocol(); err != nil {
 		glog.Errorf("Error creating node: %v", err)
+	        return nil,nil,err  
 	}
     }
     for  i:= 0; i < n ; i++ {
@@ -45,7 +47,23 @@ func createNetwork(n int, networkTopo string) ([]*NetworkNode, []*BasicVideoNetw
 	       }
         }
     }
-    return nodes, vn 
+    /* In case of 0->1->2->10->11->12->2 network topology, there is circular routing behavior when sending messages from 2 to 0 
+    for  i:= 2; i < n-1 ; i++ {
+        switch networkTopo {
+            case "ring":
+		      connectHosts(vn[i].NetworkNode.PeerHost, vn[(i+1)%n].NetworkNode.PeerHost)
+	    //default topology is star 
+            default:
+               if i > 0 {  
+		       connectHosts(vn[i].NetworkNode.PeerHost, vn[0].NetworkNode.PeerHost)
+	       }
+        }
+    }
+    connectHosts(vn[0].NetworkNode.PeerHost, vn[1].NetworkNode.PeerHost)
+    connectHosts(vn[1].NetworkNode.PeerHost, vn[2].NetworkNode.PeerHost)
+    connectHosts(vn[n-1].NetworkNode.PeerHost, vn[2].NetworkNode.PeerHost)
+    */
+    return nodes, vn, nil 
 
 }
 
@@ -54,13 +72,20 @@ Create a network of N nodes(N>2) with 2 different topology options: star and rin
 To run the test:
 go test -integration
 */
-func runIntegrationTest(n int, networkTopo string, msgType string){
+func runIntegrationTest(n int, networkTopo string, msgType string) error{
     fmt.Println("network topology:",networkTopo)
-    nodes, vn := createNetwork(n, networkTopo)
+    nodes, vn, err:= createNetwork(n, networkTopo)
+    if err != nil{
+		return fmt.Errorf("Error creating network: %v", err)
+    }
+
     strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(nodes[1].Identity))
+    //strmID := fmt.Sprintf("%vstrmID", peer.IDHexEncode(nodes[0].Identity))
     subtmp,_ :=vn[n-1].GetSubscriber(strmID)
+    //subtmp,_ :=vn[2].GetSubscriber(strmID)
     sub, _ := subtmp.(*BasicSubscriber)
     b1, _ := vn[1].GetBroadcaster(strmID)
+    //b1, _ := vn[0].GetBroadcaster(strmID)
     result := make(map[uint64][]byte)
     lock := &sync.Mutex{}
     switch  msgType {
@@ -77,12 +102,12 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 				glog.Errorf("Cancel function should be assigned")
 		    }
 		    if !sub.working {
-				glog.Errorf("Subscriber should be working")
+				return errors.New("Subscriber should be working")
 		    }
 
 		    err := b1.Broadcast(100, []byte("test data"))
 		    if err != nil {
-				glog.Errorf("Error broadcasting: %v", err)
+				return fmt.Errorf("Error broadcasting: %v", err)
 		    }
 
 		    for start := time.Now(); time.Since(start) < 3*time.Second; {
@@ -93,12 +118,12 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 				}
 		    }
 		    if len(result) != 1 {
-				glog.Errorf("Expecting length of result to be 5, but got %v: %v", len(result), result)
+				return fmt.Errorf("Expecting length of result to be 1, but got %v: %v", len(result), result)
 		    }
 
 		    for _, d := range result {
 				if string(d) != "test data" {
-					glog.Errorf("Expecting data to be 'test data', but got %v", d)
+					return fmt.Errorf("Expecting data to be 'test data', but got %v", d)
 				}
 		    }
 
@@ -109,7 +134,6 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 	    //nodeN first subscribes to node1, node1 sends Finish to nodeN to finish the broadcasting
 	    case  "Finish" :
                            sub.Subscribe(context.Background(), func(seqNo uint64, data []byte, eof bool) {
-		//		glog.Infof("Got response: %v, %v", seqNo, data)
 				lock.Lock()
 				result[seqNo] = data
 				lock.Unlock()
@@ -119,18 +143,14 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 		           time.Sleep(1000 * time.Millisecond)
                            err := b1.Broadcast(100, []byte("test data"))
 		           if err != nil {
-				glog.Errorf("Error broadcasting: %v", err)
+				return fmt.Errorf("Error broadcasting: %v", err)
 		           }
 
 
 			   if len(vn[1].broadcasters) != 1 {
-				                   glog.Errorf("Should be 1 broadcaster in n1")
+				return fmt.Errorf("Should be 1 broadcaster in n1")
 			   }
 
-			   if len(vn[1].broadcasters[strmID].listeners) != 1 {
-				   glog.Errorf("Should be 1 listener in b1")
-	                   }
-		     //      glog.Infof("Listeners: %v",vn[1].broadcasters[strmID].listeners) 
 			   for start := time.Now(); time.Since(start) < 3*time.Second; {
 				if len(result) == 1 {
 					break
@@ -138,18 +158,21 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 					time.Sleep(time.Millisecond * 50)
 				}
 		           }
-		           err1 := b1.Finish()
+		           if len(vn[1].broadcasters[strmID].listeners) != 1 {
+				return fmt.Errorf("Should be 1 listener in b1")
+	                   }
+
+			   err1 := b1.Finish()
 			   if err1 != nil {
-		                  glog.Errorf("Error when broadcasting Finish: %v", err1)
+		                  return fmt.Errorf("Error when broadcasting Finish: %v", err1)
 	                   }
             //NodeN sends TranscodeResponse to Node1
 	    case  "TranscodeResponse":
-		   go func() {
-			   err := vn[n-1].SendTranscodeResponse(peer.IDHexEncode(nodes[1].Identity), fmt.Sprintf("%v:%v", strmID, 0), map[string]string{"strmid1": "P240p30fps4x3", "strmid2": "P360p30fps4x3"})
-				if err != nil {
-					glog.Errorf("Error sending transcode result: %v", err)
-				}
-		   }()
+		   //err := vn[n-1].SendTranscodeResponse(peer.IDHexEncode(nodes[1].Identity), fmt.Sprintf("%v:%v", strmID, 0), map[string]string{"strmid1": "P240p30fps4x3", "strmid2": "P360p30fps4x3"})
+		   err := vn[2].SendTranscodeResponse(peer.IDHexEncode(nodes[0].Identity), fmt.Sprintf("%v:%v", strmID, 0), map[string]string{"strmid1": "P240p30fps4x3", "strmid2": "P360p30fps4x3"})
+		   if err != nil {
+				return fmt.Errorf("Error sending transcode result: %v", err)
+		   }
 	           time.Sleep(1000 * time.Millisecond)		
 	   //NodeN request MasterPlayList to Node1, node1 sends the MasterPlaylist to nodeN 
 	   case "GetMasterPlaylist":
@@ -160,24 +183,23 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 
 		//node1 Updates Playlist
 		if err := vn[1].UpdateMasterPlaylist(strmID, mpl); err != nil {
-			glog.Errorf("Error updating master playlist")
+			return errors.New("Error updating master playlist")
 		}
 
 		//nodeN Gets Playlist
 		mplc, err := vn[n-1].GetMasterPlaylist(vn[1].GetNodeID(), strmID)
 		if err != nil {
-			glog.Errorf("Error getting master playlist: %v", err)
+			return fmt.Errorf("Error getting master playlist: %v", err)
 		}
 		select {
 		case r := <-mplc:
 			vars := r.Variants
-		//	glog.Infof("got: %v", r)
 			if len(vars) != 1 {
-				glog.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
+				return fmt.Errorf("Expecting 1 variants, but got: %v - %v", len(vars), r)
 			}
 		case <-time.After(time.Second * 3):
 			glog.Infof("n1 mplMap: %v", vn[1].mplMap)
-			glog.Errorf("Timed out")
+			return errors.New("Timed out")
 		}
 
 	   //NodeN sends GetNodeStatus to Node1, node1 sends the NodeStatus to NodeN
@@ -189,11 +211,11 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 		vn[1].UpdateMasterPlaylist("testStrm", mpl)
 		sc, err := vn[n-1].GetNodeStatus(vn[1].GetNodeID())
 		if err != nil {
-			glog.Errorf("Error: %v", err)
+			return fmt.Errorf("Get Node status error: %v", err)
 		}
 		status := <-sc
 		if len(status.Manifests) != 1 {
-			glog.Errorf("Expecting 1 manifest, but got %v", status.Manifests)
+			return fmt.Errorf("Expecting 1 manifest, but got %v", status.Manifests)
 		}
 	}
 	  //check node status(subscribers,relayers..) 
@@ -201,8 +223,7 @@ func runIntegrationTest(n int, networkTopo string, msgType string){
 		 glog.Infof("node%v subsribers: %v relayers: %v",i, vn[i].subscribers,vn[i].relayers)
 	}
 	time.Sleep(1000 * time.Millisecond)
-
-
+        return nil
 
 }
 
@@ -211,11 +232,21 @@ func TestSendNetworkMsg(t *testing.T) {
 	        t.Skip("To run this test, use: go test -integration")
     }
     glog.Infof("\n\nIntegration testing...")
-    runIntegrationTest(5,"star","Sub")
-    runIntegrationTest(10,"ring","Finish")
-    runIntegrationTest(5,"star","TranscodeResponse")
-//    runIntegrationTest(10,"ring","GetMasterPlaylist")
-//    runIntegrationTest(5,"ring","GetNodeStatus")
+    err := runIntegrationTest(6,"ring","Sub")
+    if err != nil {
+	    t.Errorf("Error sending Sub: %v",err)  
+    }
+//    err1 := runIntegrationTest(5,"ring","Finish")
+//    if err1 != nil {
+//	    t.Errorf("Error sending Finish: %v",err)  
+//    }
+
+
+//    err2 := runIntegrationTest(5,"ring","TranscodeResponse")
+//    if err2 != nil {
+//	    t.Errorf("Error sending TranscodeResponse: %v",err)  
+//    }
+
 
 }
 
