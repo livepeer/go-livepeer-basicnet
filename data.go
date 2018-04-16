@@ -81,6 +81,9 @@ type NodeStatusDataMsg struct {
 	NotFound bool
 }
 
+type PingDataMsg string
+type PongDataMsg string
+
 func (m Msg) MarshalJSON() ([]byte, error) {
 	// Encode m.Data into a gob
 	var b bytes.Buffer
@@ -140,10 +143,15 @@ func (m Msg) MarshalJSON() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Failed to marshal NodeStatusDataMsg: %v", err)
 		}
-	case string:
-		err := enc.Encode(m.Data.(string))
+	case PingDataMsg:
+		err := enc.Encode(m.Data.(PingDataMsg))
 		if err != nil {
-			return nil, fmt.Errorf("Failed to marshal NodeStatusDataMsg: %v", err)
+			return nil, fmt.Errorf("Failed to marshal PingDataMsg: %v", err)
+		}
+	case PongDataMsg:
+		err := enc.Encode(m.Data.(PongDataMsg))
+		if err != nil {
+			return nil, fmt.Errorf("Failed to marshal PongDataMsg: %v", err)
 		}
 	default:
 		return nil, errors.New("failed to marshal message data")
@@ -229,17 +237,17 @@ func (m *Msg) UnmarshalJSON(b []byte) error {
 		}
 		m.Data = nsd
 	case PingID:
-		var sd string
+		var sd PingDataMsg
 		err := dec.Decode(&sd)
 		if err != nil {
-			return errors.New("failed to decode string")
+			return errors.New("failed to decode PingDataMsg")
 		}
 		m.Data = sd
 	case PongID:
-		var sd string
+		var sd PongDataMsg
 		err := dec.Decode(&sd)
 		if err != nil {
-			return errors.New("failed to decode string")
+			return errors.New("failed to decode PongDataMsg")
 		}
 		m.Data = sd
 	default:
