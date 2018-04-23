@@ -8,25 +8,26 @@ import (
 
 	"github.com/golang/glog"
 
-	inet "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	addrutil "gx/ipfs/QmVJGsPeK3vwtEyyTxpCs47yjBYMmYsAhEouPDF3Gb2eK3/go-addr-util"
-	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
-	swarm "gx/ipfs/QmWpJ4y2vxJ6GZpPfQbpVpQxAYS3UeR6AKNbAHxw7wN3qw/go-libp2p-swarm"
-	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	addrutil "gx/ipfs/QmNSWW3Sb4eju4o2djPQ1L1c2Zj9XN9sMYJL8r1cbxdc6b/go-addr-util"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	swarm "gx/ipfs/QmSwZMWwFZSUpe5muU2xgTUwppH24KfMwdPXiwbEp2c6G5/go-libp2p-swarm"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	kad "gx/ipfs/QmWY24HyokZFtW5bx36EwJ7rBPiwKmNdWNtWbwfDCgnHtp/go-libp2p-kad-dht"
+	bhost "gx/ipfs/QmXGfPjhnro8tgANHDUg4gGgLGYnAz1zcDPAgNeUkzbsN1/go-libp2p/p2p/host/basic"
+	rhost "gx/ipfs/QmXGfPjhnro8tgANHDUg4gGgLGYnAz1zcDPAgNeUkzbsN1/go-libp2p/p2p/host/routed"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	inet "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	bhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/basic"
-	rhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/routed"
-	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
+	record "gx/ipfs/QmcBSi3Zxa6ytDQxig2iMv4VMfiKKy7v4tibi1Sq6Z5u2x/go-libp2p-record"
+	ds "gx/ipfs/QmeiCcJfDW1GJnWUArudsv5rQsihpi4oyddPhdqo3CfX6i/go-datastore"
 )
 
 type NetworkNode interface {
 	ID() peer.ID
+	Host() host.Host
 	GetOutStream(pid peer.ID) *BasicOutStream
 	RefreshOutStream(pid peer.ID) *BasicOutStream
 	RemoveStream(pid peer.ID)
@@ -38,6 +39,10 @@ type NetworkNode interface {
 	ClosestLocalPeers(strmID string) ([]peer.ID, error)
 	GetDHT() *kad.IpfsDHT
 	SetStreamHandler(pid protocol.ID, handler inet.StreamHandler)
+	SetSignFun(sign func(data []byte) ([]byte, error))
+	Sign(data []byte) ([]byte, error)
+	SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool)
+	VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool
 }
 
 type BasicNetworkNode struct {
@@ -47,6 +52,8 @@ type BasicNetworkNode struct {
 	Network        *BasicVideoNetwork
 	outStreams     map[peer.ID]*BasicOutStream
 	outStreamsLock *sync.Mutex
+	sign           func(data []byte) ([]byte, error)
+	verify         func(data []byte, sig []byte, strmID string) bool
 }
 
 //NewNode creates a new Livepeerd node.
@@ -108,11 +115,8 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNot
 func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching) (*kad.IpfsDHT, error) {
 	dhtRouting := kad.NewDHT(ctx, host, dstore)
 
-	dhtRouting.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
+	dhtRouting.Validator["v"] = func(rec *record.ValidationRecord) error {
+		return nil
 	}
 	dhtRouting.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 
@@ -162,6 +166,10 @@ func (n *BasicNetworkNode) ID() peer.ID {
 	return n.Identity
 }
 
+func (n *BasicNetworkNode) Host() host.Host {
+	return n.PeerHost
+}
+
 func (n *BasicNetworkNode) GetPeers() []peer.ID {
 	return n.PeerHost.Peerstore().Peers()
 }
@@ -188,6 +196,28 @@ func (n *BasicNetworkNode) GetDHT() *kad.IpfsDHT {
 
 func (n *BasicNetworkNode) SetStreamHandler(pid protocol.ID, handler inet.StreamHandler) {
 	n.PeerHost.SetStreamHandler(pid, handler)
+}
+
+func (n *BasicNetworkNode) SetSignFun(sign func(data []byte) ([]byte, error)) {
+	n.sign = sign
+}
+
+func (n *BasicNetworkNode) Sign(data []byte) ([]byte, error) {
+	if n.sign == nil {
+		return make([]byte, 0), nil // XXX not sure about this. error instead?
+	}
+	return n.sign(data)
+}
+
+func (n *BasicNetworkNode) SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool) {
+	n.verify = verify
+}
+
+func (n *BasicNetworkNode) VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool {
+	if n.verify == nil {
+		return true // XXX change to false once we can verify sigs
+	}
+	return n.verify(data, sig, strmID)
 }
 
 func (bn *BasicNetworkNode) ClosestLocalPeers(strmID string) ([]peer.ID, error) {
