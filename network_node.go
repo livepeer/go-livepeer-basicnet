@@ -3,18 +3,12 @@ package basicnet
 import (
 	"context"
 	"fmt"
-	"sync"
-	"time"
-
-	"github.com/golang/glog"
-
-	addrutil "gx/ipfs/QmNSWW3Sb4eju4o2djPQ1L1c2Zj9XN9sMYJL8r1cbxdc6b/go-addr-util"
 	bhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/basic"
 	rhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/routed"
 	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
 	swarm "gx/ipfs/QmSwZMWwFZSUpe5muU2xgTUwppH24KfMwdPXiwbEp2c6G5/go-libp2p-swarm"
 	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
-	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	multiaddr "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
 	ds "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
 	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
 	inet "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
@@ -22,6 +16,10 @@ import (
 	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
 	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
+	"sync"
+	"time"
+
+	"github.com/golang/glog"
 )
 
 type NetworkNode interface {
@@ -61,26 +59,12 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNot
 	store := peerstore.NewPeerstore()
 	store.AddPrivKey(pid, priv)
 	store.AddPubKey(pid, pub)
-
-	// Create multiaddresses.  I'm not sure if this is correct in all cases...
-	uaddrs, err := addrutil.InterfaceAddresses()
-	if err != nil {
-		return nil, err
-	}
-	addrs := make([]ma.Multiaddr, len(uaddrs), len(uaddrs))
-	for i, uaddr := range uaddrs {
-		portAddr, err := ma.NewMultiaddr(fmt.Sprintf("/tcp/%d", listenPort))
-		if err != nil {
-			glog.Errorf("Error creating portAddr: %v %v", uaddr, err)
-			return nil, err
-		}
-		addrs[i] = uaddr.Encapsulate(portAddr)
-	}
+	sourceMultiAddr, _ := multiaddr.NewMultiaddr(fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", listenPort))
 
 	// Create swarm (implements libP2P Network)
 	netwrk, err := swarm.NewNetwork(
 		context.Background(),
-		addrs,
+		[]multiaddr.Multiaddr{sourceMultiAddr},
 		pid,
 		store,
 		&BasicReporter{})
