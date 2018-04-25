@@ -457,12 +457,34 @@ func (n *BasicVideoNetwork) nodeStatus() *lpnet.NodeStatus {
 	}
 }
 
-func (n *BasicVideoNetwork) Ping(nid, addr string) (chan struct{}, error) {
+func (n *BasicVideoNetwork) Ping(nid string) (chan struct{}, error) {
 	returnCh := make(chan struct{})
 	id, err := peer.IDHexDecode(nid)
 	if err != nil {
 		return nil, errors.New("ErrBadNodeID")
 	}
+
+	addrs := n.NetworkNode.(*BasicNetworkNode).PeerHost.Peerstore().Addrs(id)
+	if addrs == nil {
+		return nil, errors.New("ErrNotFound")
+	}
+	addrsStr := make([]string, 0)
+	for _, addr := range addrs {
+		addrsStr = append(addrsStr, addr.String())
+	}
+
+	connectedness := n.NetworkNode.(*BasicNetworkNode).PeerHost.Network().Connectedness(id)
+	if connectedness != net.Connected {
+		//We were once connected.  Try to reconnect.
+		if err := n.NetworkNode.(*BasicNetworkNode).PeerHost.Network().ClosePeer(id); err != nil {
+			glog.Errorf("Error closing peer %v: %v", nid, err)
+		}
+		if err := n.Connect(nid, addrsStr); err != nil {
+			glog.Errorf("Error reconnecting to %v: %v", nid, err)
+			return nil, errors.New("ErrBadNodeID")
+		}
+	}
+
 	s := n.NetworkNode.GetOutStream(id)
 	if s == nil {
 		return nil, ErrSendMsg
@@ -475,7 +497,7 @@ func (n *BasicVideoNetwork) Ping(nid, addr string) (chan struct{}, error) {
 				glog.Errorf("Error closing conn: %v", err)
 				return nil, err
 			}
-			if err := n.Connect(nid, []string{addr}); err != nil {
+			if err := n.Connect(nid, addrsStr); err != nil {
 				return nil, err
 			}
 		}
