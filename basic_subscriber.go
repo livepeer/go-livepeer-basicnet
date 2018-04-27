@@ -141,7 +141,7 @@ func (s *BasicSubscriber) sendSub(ctx context.Context, opCode Opcode, msg interf
 			continue
 		}
 		//Question: Where do we close the stream? If we only close on "Unsubscribe", we may leave some streams open...
-		glog.V(5).Infof("New peer from kademlia: %v", peer.IDHexEncode(p))
+		glog.V(5).Infof("New peer from kademlia: %v", p)
 		ns := s.Network.NetworkNode.GetOutStream(p)
 		if ns != nil {
 			err = s.Network.sendMessageWithRetry(p, ns, opCode, msg)
@@ -254,7 +254,7 @@ func (s *BasicSubscriber) Connected(n inet.Network, conn inet.Conn) {
 		// Be a good network citizen -- cancel the original sub through the relay
 		if ns := s.Network.NetworkNode.GetOutStream(s.UpstreamPeer); ns != nil {
 			if err := s.Network.sendMessageWithRetry(s.UpstreamPeer, ns, CancelSubID, CancelSubMsg{StrmID: s.StrmID}); err != nil {
-				glog.Errorf("%v Unable to cancel subscription to upstream relay %s", s.Network.NetworkNode.ID(), peer.IDHexEncode(s.UpstreamPeer))
+				glog.Errorf("%v Unable to cancel subscription to upstream relay %s", s.Network.NetworkNode.ID(), s.UpstreamPeer)
 			}
 		}
 		// check for duplicated cxns or subs?

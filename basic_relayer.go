@@ -37,7 +37,7 @@ func (br *BasicRelayer) RelayStreamData(sd *StreamDataMsg) error {
 func (br *BasicRelayer) RelayFinishStream(nw *BasicVideoNetwork, fs FinishStreamMsg) error {
 	for strmID, l := range br.listeners {
 		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, FinishStreamID, fs); err != nil {
-			glog.Errorf("Error relaying finish stream to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+			glog.Errorf("Error relaying finish stream to %v: %v", l.Stream.Conn().RemotePeer(), err)
 			delete(br.listeners, strmID)
 		}
 		br.LastRelay = time.Now()
@@ -48,7 +48,7 @@ func (br *BasicRelayer) RelayFinishStream(nw *BasicVideoNetwork, fs FinishStream
 func (br *BasicRelayer) RelayMasterPlaylistData(nw *BasicVideoNetwork, mpld MasterPlaylistDataMsg) error {
 	for strmID, l := range br.listeners {
 		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, MasterPlaylistDataID, mpld); err != nil {
-			glog.Errorf("Error relaying master playlist data to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+			glog.Errorf("Error relaying master playlist data to %v: %v", l.Stream.Conn().RemotePeer(), err)
 			delete(br.listeners, strmID)
 		}
 		br.LastRelay = time.Now()
@@ -59,7 +59,7 @@ func (br *BasicRelayer) RelayMasterPlaylistData(nw *BasicVideoNetwork, mpld Mast
 func (br *BasicRelayer) RelayNodeStatusData(nw *BasicVideoNetwork, nsd NodeStatusDataMsg) error {
 	for id, l := range br.listeners {
 		if err := br.Network.sendMessageWithRetry(l.Stream.Conn().RemotePeer(), l, NodeStatusDataID, nsd); err != nil {
-			glog.Errorf("Error relaying node status data to %v: %v", peer.IDHexEncode(l.Stream.Conn().RemotePeer()), err)
+			glog.Errorf("Error relaying node status data to %v: %v", l.Stream.Conn().RemotePeer(), err)
 			delete(br.listeners, id)
 		}
 		br.LastRelay = time.Now()
@@ -75,5 +75,5 @@ func (br *BasicRelayer) AddListener(nw *BasicVideoNetwork, pid peer.ID) {
 }
 
 func (br BasicRelayer) String() string {
-	return fmt.Sprintf("UpstreamPeer: %v, listeners:%v, count:%v", peer.IDHexEncode(br.UpstreamPeer), len(br.listeners), br.dataCount)
+	return fmt.Sprintf("UpstreamPeer: %v, listeners:%v, count:%v", br.UpstreamPeer, len(br.listeners), br.dataCount)
 }
