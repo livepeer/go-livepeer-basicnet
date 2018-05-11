@@ -75,7 +75,7 @@ type BasicVideoNetwork struct {
 func (n *BasicVideoNetwork) String() string {
 	peers := make([]string, 0)
 	for _, p := range n.NetworkNode.GetPeers() {
-		peers = append(peers, fmt.Sprintf("%v[%v]", peer.IDHexEncode(p), n.NetworkNode.GetPeerInfo(p)))
+		peers = append(peers, fmt.Sprintf("%v[%v]", p, n.NetworkNode.GetPeerInfo(p)))
 	}
 	return fmt.Sprintf("\n\nbroadcasters:%v\n\nsubscribers:%v\n\nrelayers:%v\n\npeers:%v\n\nmasterPlaylists:%v\n\n", n.broadcasters, n.subscribers, n.relayers, peers, n.mplMap)
 }
@@ -551,11 +551,11 @@ func (n *BasicVideoNetwork) SetupProtocol() error {
 func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 	msg, err := ws.ReceiveMessage()
 	if err != nil {
-		glog.Errorf("Got error decoding msg from %v: %v (%v).", peer.IDHexEncode(ws.Stream.Conn().RemotePeer()), err, reflect.TypeOf(err))
+		glog.Errorf("Got error decoding msg from %v: %v (%v).", ws.Stream.Conn().RemotePeer(), err, reflect.TypeOf(err))
 		return err
 	}
 
-	glog.V(4).Infof("Received a message %v from %v", msg.Op, peer.IDHexEncode(ws.Stream.Conn().RemotePeer()))
+	glog.V(4).Infof("Received a message %v from %v", msg.Op, ws.Stream.Conn().RemotePeer())
 	if msg.Op == GetMasterPlaylistReqID || msg.Op == MasterPlaylistDataID {
 		if nw.msgSentCache.Has(msgSentCacheKey(ws.Stream.Conn().RemotePeer(), msg.Op, msg.Data)) {
 			//Drop the incoming message
@@ -683,7 +683,7 @@ func handleSubReq(nw *BasicVideoNetwork, subReq SubReqMsg, remotePID peer.ID) er
 func handleSub(nw *BasicVideoNetwork, opCode Opcode, strmID string, submsg interface{}, remotePID peer.ID) error {
 	//If we have local broadcaster, just listen.
 	if b := nw.broadcasters[strmID]; b != nil {
-		glog.V(5).Infof("Handling subReq, adding listener %v to broadcaster", peer.IDHexEncode(remotePID))
+		glog.V(5).Infof("Handling subReq, adding listener %v to broadcaster", remotePID)
 		//TODO: Add verification code for the SubNodeID (Make sure the message is not spoofed)
 		b.AddListeningPeer(nw, remotePID)
 
@@ -760,7 +760,7 @@ func handleSub(nw *BasicVideoNetwork, opCode Opcode, strmID string, submsg inter
 			}
 			return nil
 		} else {
-			glog.Errorf("Cannot get stream for peer: %v", peer.IDHexEncode(p))
+			glog.Errorf("Cannot get stream for peer: %v", p)
 		}
 	}
 
@@ -784,7 +784,7 @@ func handleCancelSubReq(nw *BasicVideoNetwork, cr CancelSubMsg, rpeer peer.ID) e
 			ns := nw.NetworkNode.GetOutStream(r.UpstreamPeer)
 			if ns != nil {
 				if err := nw.sendMessageWithRetry(r.UpstreamPeer, ns, CancelSubID, cr); err != nil {
-					glog.Errorf("Error relaying cancel message to %v: %v ", peer.IDHexEncode(r.UpstreamPeer), err)
+					glog.Errorf("Error relaying cancel message to %v: %v ", r.UpstreamPeer, err)
 				}
 			}
 			if _, ok := nw.subscribers[cr.StrmID]; !ok {
@@ -884,7 +884,7 @@ func handleTranscodeResponse(nw *BasicVideoNetwork, remotePID peer.ID, tr Transc
 		s := nw.NetworkNode.GetOutStream(p)
 		if s != nil {
 			if err := nw.sendMessageWithRetry(p, s, TranscodeResponseID, tr); err != nil {
-				glog.Errorf("Error sending Transcoding Response Message to %v", peer.IDHexEncode(p))
+				glog.Errorf("Error sending Transcoding Response Message to %v", p)
 				continue
 			} else {
 				return nil
@@ -1053,7 +1053,7 @@ func handleNodeStatusReqMsg(nw *BasicVideoNetwork, remotePID peer.ID, nsr NodeSt
 
 			s := nw.NetworkNode.GetOutStream(p)
 			if s != nil {
-				glog.V(common.SHORT).Infof("Sending msg to %v", peer.IDHexEncode(p))
+				glog.V(common.SHORT).Infof("Sending msg to %v", p)
 				if err := nw.sendMessageWithRetry(p, s, NodeStatusReqID, NodeStatusReqMsg{NodeID: nsr.NodeID}); err != nil {
 					continue
 				}

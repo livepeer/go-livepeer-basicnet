@@ -89,7 +89,7 @@ func NewNode(listenAddrs []ma.Multiaddr, priv crypto.PrivKey, pub crypto.PubKey,
 	}
 	rHost := rhost.Wrap(basicHost, dht)
 
-	glog.V(2).Infof("Created node: %v at %v", peer.IDHexEncode(rHost.ID()), rHost.Addrs())
+	glog.V(2).Infof("Created node: %v at %v", rHost.ID(), rHost.Addrs())
 	nn := &BasicNetworkNode{Identity: pid, Kad: dht, PeerHost: rHost, outStreams: streams, outStreamsLock: &sync.Mutex{}}
 	f.HandleDisconnect(func(pid peer.ID) {
 		nn.RemoveStream(pid)
@@ -124,7 +124,7 @@ func (n *BasicNetworkNode) RefreshOutStream(pid peer.ID) *BasicOutStream {
 
 	ns, err := n.PeerHost.NewStream(context.Background(), pid, Protocol)
 	if err != nil {
-		glog.Errorf("%v Error creating stream to %v: %v", peer.IDHexEncode(n.Identity), peer.IDHexEncode(pid), err)
+		glog.Errorf("%v Error creating stream to %v: %v", n.Identity, pid, err)
 		return nil
 	}
 	strm := NewBasicOutStream(ns)
