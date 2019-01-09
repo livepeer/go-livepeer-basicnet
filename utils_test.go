@@ -2,18 +2,20 @@ package basicnet
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	netutil "gx/ipfs/QmQGX417WoxKxDJeHqouMEmmH4G1RCENNSzkZYHrXy3Xb3/go-libp2p-netutil"
-	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
-	dssync "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore/sync"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	addrutil "gx/ipfs/QmNSWW3Sb4eju4o2djPQ1L1c2Zj9XN9sMYJL8r1cbxdc6b/go-addr-util"
+	bhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/basic"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	ds "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
+	dssync "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore/sync"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	kad "gx/ipfs/QmY1y2M1aCcVhy8UuTbZJBvuFbegZm47f9cDAdgxiehQfx/go-libp2p-kad-dht"
+	netutil "gx/ipfs/QmYVR3C8DWPHdHxvLtNFYfjsXgaRAdh6hPMNH3KiwCgu4o/go-libp2p-netutil"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	bhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/basic"
-	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 
 	"github.com/golang/glog"
 )
@@ -29,13 +31,6 @@ func setupDHT(ctx context.Context, t *testing.T, client bool) (*kad.IpfsDHT, hos
 		d = kad.NewDHT(ctx, h, dss)
 	}
 
-	d.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
-	}
-	d.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
 	return d, h
 }
 
@@ -71,16 +66,17 @@ func setupDHTS(ctx context.Context, n int, t *testing.T) ([]*kad.IpfsDHT, []host
 }
 
 func setupNodes(t *testing.T, p1, p2 int) (*BasicVideoNetwork, *BasicVideoNetwork) {
+	MsgSentTimeCacheDuration = 0 * time.Millisecond
 	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
-	n1, _ := NewBasicVideoNetwork(no1, "")
+	no1, _ := NewNode(addrs(p1), priv1, pub1, &BasicNotifiee{})
+	n1, _ := NewBasicVideoNetwork(no1, "127.0.0.1", p1)
 	if err := n1.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
 	}
 
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
-	n2, _ := NewBasicVideoNetwork(no2, "")
+	no2, _ := NewNode(addrs(p2), priv2, pub2, &BasicNotifiee{})
+	n2, _ := NewBasicVideoNetwork(no2, "127.0.0.1", p2)
 	if err := n2.SetupProtocol(); err != nil {
 		t.Errorf("Error creating node: %v", err)
 	}
@@ -136,8 +132,8 @@ func simpleNodes(p1, p2 int) (*BasicNetworkNode, *BasicNetworkNode) {
 	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
 
-	n1, _ := NewNode(p1, priv1, pub1, &BasicNotifiee{})
-	n2, _ := NewNode(p2, priv2, pub2, &BasicNotifiee{})
+	n1, _ := NewNode(addrs(p1), priv1, pub1, &BasicNotifiee{})
+	n2, _ := NewNode(addrs(p2), priv2, pub2, &BasicNotifiee{})
 
 	// n1.PeerHost.Peerstore().AddAddrs(n2.Identity, n2.PeerHost.Addrs(), peerstore.PermanentAddrTTL)
 	// n2.PeerHost.Peerstore().AddAddrs(n1.Identity, n1.PeerHost.Addrs(), peerstore.PermanentAddrTTL)
@@ -145,4 +141,22 @@ func simpleNodes(p1, p2 int) (*BasicNetworkNode, *BasicNetworkNode) {
 	// n2.PeerHost.Connect(context.Background(), peerstore.PeerInfo{ID: n1.Identity})
 
 	return n1, n2
+}
+
+func addrs(port int) []ma.Multiaddr {
+	uaddrs, err := addrutil.InterfaceAddresses()
+	if err != nil {
+		return nil
+	}
+	addrs := make([]ma.Multiaddr, len(uaddrs), len(uaddrs))
+	for i, uaddr := range uaddrs {
+		portAddr, err := ma.NewMultiaddr(fmt.Sprintf("/tcp/%d", port))
+		if err != nil {
+			glog.Errorf("Error creating portAddr: %v %v", uaddr, err)
+			return nil
+		}
+		addrs[i] = uaddr.Encapsulate(portAddr)
+	}
+
+	return addrs
 }

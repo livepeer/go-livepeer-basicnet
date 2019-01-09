@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	kad "gx/ipfs/QmY1y2M1aCcVhy8UuTbZJBvuFbegZm47f9cDAdgxiehQfx/go-libp2p-kad-dht"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 	"reflect"
 	"sort"
 	"sync"
@@ -52,8 +52,8 @@ func TestReconnect(t *testing.T) {
 		t.Errorf("Error closing host: %v", err)
 	}
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15001, priv2, pub2, &BasicNotifiee{})
-	n2, _ = NewBasicVideoNetwork(no2, "")
+	no2, _ := NewNode(addrs(15001), priv2, pub2, &BasicNotifiee{})
+	n2, _ = NewBasicVideoNetwork(no2, "", 0)
 	go n2.SetupProtocol()
 	connectHosts(n1.NetworkNode.(*BasicNetworkNode).PeerHost, n2.NetworkNode.(*BasicNetworkNode).PeerHost)
 	s = n2.NetworkNode.GetOutStream(n1.NetworkNode.(*BasicNetworkNode).Identity)
@@ -198,7 +198,7 @@ func TestSubPath(t *testing.T) {
 	nodes := make([]*BasicVideoNetwork, 10, 10)
 	for i, id := range ids {
 		n_tmp := newNode(id, dhtLookup[id], hostsLookup[id])
-		n, _ := NewBasicVideoNetwork(n_tmp, "")
+		n, _ := NewBasicVideoNetwork(n_tmp, "", 0)
 		nodes[i] = n
 		if i != 0 {
 			go n.SetupProtocol()
@@ -269,10 +269,10 @@ func TestSubPeerForwardPath(t *testing.T) {
 	})
 	// glog.Infof("keys: %v", keys)
 
-	no1, _ := NewNode(15000, keys[0].Priv, keys[0].Pub, &BasicNotifiee{})
-	n1, _ := NewBasicVideoNetwork(no1, "")
-	no2, _ := NewNode(15001, keys[1].Priv, keys[1].Pub, &BasicNotifiee{})
-	no3, _ := NewNode(15000, keys[2].Priv, keys[2].Pub, &BasicNotifiee{}) //Make this node unreachable from n1 because it's using the same port
+	no1, _ := NewNode(addrs(15000), keys[0].Priv, keys[0].Pub, &BasicNotifiee{})
+	n1, _ := NewBasicVideoNetwork(no1, "", 0)
+	no2, _ := NewNode(addrs(15001), keys[1].Priv, keys[1].Pub, &BasicNotifiee{})
+	no3, _ := NewNode(addrs(15000), keys[2].Priv, keys[2].Pub, &BasicNotifiee{}) //Make this node unreachable from n1 because it's using the same port
 	defer no1.PeerHost.Close()
 	defer n1.NetworkNode.(*BasicNetworkNode).PeerHost.Close()
 	defer no2.PeerHost.Close()
@@ -930,7 +930,6 @@ func TestSendTranscodeResponse(t *testing.T) {
 	// 	glog.Infof("relayer should have 1 listener, but got: %v", r.listeners[peer.IDHexEncode(n3.Identity)])
 	// }
 }
-
 func TestHandleGetMasterPlaylist(t *testing.T) {
 	n1, n2 := setupNodes(t, 15000, 15001)
 	n3, n4 := simpleNodes(15003, 15004)
@@ -948,7 +947,11 @@ func TestHandleGetMasterPlaylist(t *testing.T) {
 			if err != nil {
 				break
 			}
-			n3Chan <- msg.Data.(MasterPlaylistDataMsg)
+			switch msg.Data.(type) {
+			case MasterPlaylistDataMsg:
+				n3Chan <- msg.Data.(MasterPlaylistDataMsg)
+			default:
+			}
 		}
 	})
 

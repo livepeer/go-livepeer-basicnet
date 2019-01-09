@@ -2,31 +2,28 @@ package basicnet
 
 import (
 	"context"
-	"fmt"
+	bhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/basic"
+	rhost "gx/ipfs/QmNh1kGFFdsPu79KNSaL4NUKUPb4Eiz4KHdMtFY6664RDp/go-libp2p/p2p/host/routed"
+	host "gx/ipfs/QmNmJZL7FQySMtE2BQuLMuZg2EB2CLEunJJUSVSc9YnnbV/go-libp2p-host"
+	swarm "gx/ipfs/QmSwZMWwFZSUpe5muU2xgTUwppH24KfMwdPXiwbEp2c6G5/go-libp2p-swarm"
+	kb "gx/ipfs/QmTH6VLu3WXfbH3nuLdmscgPWuiPZv3GMJ2YCdzBS5z91T/go-libp2p-kbucket"
+	ma "gx/ipfs/QmWWQ2Txc2c6tqjsBpzg5Ar652cHPGNsQQp2SejkNmkUMb/go-multiaddr"
+	ds "gx/ipfs/QmXRKBQA4wXP7xWbFiZsR1GP4HV6wMDQ1aWFxZZ4uBcPX9/go-datastore"
+	peerstore "gx/ipfs/QmXauCuJzmzapetmC6W4TuDJLL1yFFrVzSHoWv8YdbmnxH/go-libp2p-peerstore"
+	inet "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	kad "gx/ipfs/QmY1y2M1aCcVhy8UuTbZJBvuFbegZm47f9cDAdgxiehQfx/go-libp2p-kad-dht"
+	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
+	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	"sync"
 	"time"
 
 	"github.com/golang/glog"
-
-	inet "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peerstore "gx/ipfs/QmPgDWmTmuzvP7QE5zwo1TmjbJme9pmZHNujB2453jkCTr/go-libp2p-peerstore"
-	kb "gx/ipfs/QmSAFA8v42u4gpJNy1tb7vW3JiiXiaYDC2b845c2RnNSJL/go-libp2p-kbucket"
-	addrutil "gx/ipfs/QmVJGsPeK3vwtEyyTxpCs47yjBYMmYsAhEouPDF3Gb2eK3/go-addr-util"
-	ds "gx/ipfs/QmVSase1JP7cq9QkPT46oNwdp9pT6kBkG3oqS14y3QcZjG/go-datastore"
-	swarm "gx/ipfs/QmWpJ4y2vxJ6GZpPfQbpVpQxAYS3UeR6AKNbAHxw7wN3qw/go-libp2p-swarm"
-	ma "gx/ipfs/QmXY77cVe7rVRQXZZQRioukUM7aRW3BTcAgJe12MCtb3Ji/go-multiaddr"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
-	kad "gx/ipfs/QmYi2NvTAiv2xTNJNcnuz3iXDDT1ViBwLFXmDb2g7NogAD/go-libp2p-kad-dht"
-	protocol "gx/ipfs/QmZNkThpqfVXs9GNbexPrfBbXSLNYeKrE7jwFM2oqHbyqN/go-libp2p-protocol"
-	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
-	bhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/basic"
-	rhost "gx/ipfs/Qmbgce14YTWE2qhE49JVvTBPaHTyz3FaFmqQPyuZAz6C28/go-libp2p/p2p/host/routed"
-	record "gx/ipfs/QmbxkgUceEcuSZ4ZdBA3x74VUDSSYjHYmmeEqkjxbtZ6Jg/go-libp2p-record"
-	host "gx/ipfs/Qmc1XhrFEiSeBNn3mpfg6gEuYCt5im2gYmNVmncsvmpeAk/go-libp2p-host"
 )
 
 type NetworkNode interface {
 	ID() peer.ID
+	Host() host.Host
 	GetOutStream(pid peer.ID) *BasicOutStream
 	RefreshOutStream(pid peer.ID) *BasicOutStream
 	RemoveStream(pid peer.ID)
@@ -38,6 +35,10 @@ type NetworkNode interface {
 	ClosestLocalPeers(strmID string) ([]peer.ID, error)
 	GetDHT() *kad.IpfsDHT
 	SetStreamHandler(pid protocol.ID, handler inet.StreamHandler)
+	SetSignFun(sign func(data []byte) ([]byte, error))
+	Sign(data []byte) ([]byte, error)
+	SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool)
+	VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool
 }
 
 type BasicNetworkNode struct {
@@ -47,10 +48,12 @@ type BasicNetworkNode struct {
 	Network        *BasicVideoNetwork
 	outStreams     map[peer.ID]*BasicOutStream
 	outStreamsLock *sync.Mutex
+	sign           func(data []byte) ([]byte, error)
+	verify         func(data []byte, sig []byte, strmID string) bool
 }
 
 //NewNode creates a new Livepeerd node.
-func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNotifiee) (*BasicNetworkNode, error) {
+func NewNode(listenAddrs []ma.Multiaddr, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNotifiee) (*BasicNetworkNode, error) {
 	pid, err := peer.IDFromPublicKey(pub)
 	if err != nil {
 		return nil, err
@@ -63,28 +66,18 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNot
 	store.AddPrivKey(pid, priv)
 	store.AddPubKey(pid, pub)
 
-	// Create multiaddresses.  I'm not sure if this is correct in all cases...
-	uaddrs, err := addrutil.InterfaceAddresses()
-	if err != nil {
-		return nil, err
-	}
-	addrs := make([]ma.Multiaddr, len(uaddrs), len(uaddrs))
-	for i, uaddr := range uaddrs {
-		portAddr, err := ma.NewMultiaddr(fmt.Sprintf("/tcp/%d", listenPort))
-		if err != nil {
-			glog.Errorf("Error creating portAddr: %v %v", uaddr, err)
-			return nil, err
-		}
-		addrs[i] = uaddr.Encapsulate(portAddr)
-	}
-
 	// Create swarm (implements libP2P Network)
 	netwrk, err := swarm.NewNetwork(
 		context.Background(),
-		addrs,
+		listenAddrs,
 		pid,
 		store,
 		&BasicReporter{})
+
+	if err != nil {
+		glog.Errorf("Unable to create swarm: %v", err)
+		return nil, err
+	}
 
 	netwrk.Notify(f)
 	basicHost := bhost.New(netwrk, bhost.NATPortMap)
@@ -110,18 +103,6 @@ func NewNode(listenPort int, priv crypto.PrivKey, pub crypto.PubKey, f *BasicNot
 func constructDHTRouting(ctx context.Context, host host.Host, dstore ds.Batching) (*kad.IpfsDHT, error) {
 	dhtRouting := kad.NewDHT(ctx, host, dstore)
 
-	dhtRouting.Validator["v"] = &record.ValidChecker{
-		Func: func(string, []byte) error {
-			return nil
-		},
-		Sign: false,
-	}
-	dhtRouting.Selector["v"] = func(_ string, bs [][]byte) (int, error) { return 0, nil }
-
-	// if err := dhtRouting.Bootstrap(context.Background()); err != nil {
-	// 	glog.Errorf("Error bootstraping dht: %v", err)
-	// 	return nil, err
-	// }
 	return dhtRouting, nil
 }
 
@@ -164,6 +145,10 @@ func (n *BasicNetworkNode) ID() peer.ID {
 	return n.Identity
 }
 
+func (n *BasicNetworkNode) Host() host.Host {
+	return n.PeerHost
+}
+
 func (n *BasicNetworkNode) GetPeers() []peer.ID {
 	return n.PeerHost.Peerstore().Peers()
 }
@@ -190,6 +175,28 @@ func (n *BasicNetworkNode) GetDHT() *kad.IpfsDHT {
 
 func (n *BasicNetworkNode) SetStreamHandler(pid protocol.ID, handler inet.StreamHandler) {
 	n.PeerHost.SetStreamHandler(pid, handler)
+}
+
+func (n *BasicNetworkNode) SetSignFun(sign func(data []byte) ([]byte, error)) {
+	n.sign = sign
+}
+
+func (n *BasicNetworkNode) Sign(data []byte) ([]byte, error) {
+	if n.sign == nil {
+		return make([]byte, 0), nil // XXX not sure about this. error instead?
+	}
+	return n.sign(data)
+}
+
+func (n *BasicNetworkNode) SetVerifyTranscoderSig(verify func(data []byte, sig []byte, strmID string) bool) {
+	n.verify = verify
+}
+
+func (n *BasicNetworkNode) VerifyTranscoderSig(data []byte, sig []byte, strmID string) bool {
+	if n.verify == nil {
+		return true // XXX change to false once we can verify sigs
+	}
+	return n.verify(data, sig, strmID)
 }
 
 func (bn *BasicNetworkNode) ClosestLocalPeers(strmID string) ([]peer.ID, error) {

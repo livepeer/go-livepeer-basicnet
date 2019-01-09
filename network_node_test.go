@@ -2,7 +2,7 @@ package basicnet
 
 import (
 	"fmt"
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
 	crypto "gx/ipfs/QmaPbCnUMBohSGo3KnxEa2bHqyJVVeEEcwtqJAYxerieBo/go-libp2p-crypto"
 	"net/http"
 	"testing"
@@ -17,9 +17,9 @@ func TestGetOutStream(t *testing.T) {
 	}()
 
 	priv1, pub1, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no1, _ := NewNode(15000, priv1, pub1, &BasicNotifiee{})
+	no1, _ := NewNode(addrs(15000), priv1, pub1, &BasicNotifiee{})
 	priv2, pub2, _ := crypto.GenerateKeyPair(crypto.RSA, 2048)
-	no2, _ := NewNode(15001, priv2, pub2, &BasicNotifiee{})
+	no2, _ := NewNode(addrs(15001), priv2, pub2, &BasicNotifiee{})
 	no1.PeerHost.SetStreamHandler(Protocol, func(s net.Stream) {
 	})
 	msgChan := make(chan Msg)

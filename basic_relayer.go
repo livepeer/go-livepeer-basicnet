@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 
 	"github.com/golang/glog"
 )
@@ -16,6 +16,7 @@ type BasicRelayer struct {
 	UpstreamPeer peer.ID
 	listeners    map[string]*BasicOutStream
 	LastRelay    time.Time
+	dataCount    uint64
 }
 
 //RelayStreamData sends a StreamDataMsg to its listeners
@@ -28,6 +29,7 @@ func (br *BasicRelayer) RelayStreamData(sd *StreamDataMsg) error {
 			delete(br.listeners, strmID)
 		}
 		br.LastRelay = time.Now()
+		br.dataCount++
 	}
 	return nil
 }
@@ -73,5 +75,5 @@ func (br *BasicRelayer) AddListener(nw *BasicVideoNetwork, pid peer.ID) {
 }
 
 func (br BasicRelayer) String() string {
-	return fmt.Sprintf("UpstreamPeer: %v, len:%v", peer.IDHexEncode(br.UpstreamPeer), len(br.listeners))
+	return fmt.Sprintf("UpstreamPeer: %v, listeners:%v, count:%v", peer.IDHexEncode(br.UpstreamPeer), len(br.listeners), br.dataCount)
 }

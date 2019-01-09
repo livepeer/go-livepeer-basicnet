@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"sync"
 
-	net "gx/ipfs/QmNa31VPzC561NWwRsJLE7nGYZYuuD2QfpK2b1q9BK54J1/go-libp2p-net"
-	peer "gx/ipfs/QmXYjuNuxVzXKJCfWasQk1RqkhVLDM9jtUKhqc2WPQmFSB/go-libp2p-peer"
+	net "gx/ipfs/QmXfkENeeBvh3zYA51MaSdGUdBjhQ99cP5WQe8zgr6wchG/go-libp2p-net"
+	peer "gx/ipfs/QmZoWKhxUmZ2seW4BzX6fJkNR8hh9PsGModr7q171yq2SS/go-libp2p-peer"
 
-	multicodec "github.com/multiformats/go-multicodec"
-	mcjson "github.com/multiformats/go-multicodec/json"
+	multicodec "gx/ipfs/QmRDePEiL4Yupq5EkcK3L3ko3iMgYaqUdLu7xc1kqs7dnV/go-multicodec"
+	mcjson "gx/ipfs/QmRDePEiL4Yupq5EkcK3L3ko3iMgYaqUdLu7xc1kqs7dnV/go-multicodec/json"
 
 	"github.com/golang/glog"
 )
@@ -71,11 +71,17 @@ func NewBasicOutStream(s net.Stream) *BasicOutStream {
 }
 
 func (bs *BasicOutStream) GetRemotePeer() peer.ID {
+	if bs == nil {
+		return ""
+	}
 	return bs.Stream.Conn().RemotePeer()
 }
 
 //SendMessage writes a message into the stream.
 func (bs *BasicOutStream) SendMessage(opCode Opcode, data interface{}) error {
+	if bs == nil {
+		return ErrOutStream
+	}
 	// glog.V(common.DEBUG).Infof("Sending msg %v to %v", opCode, peer.IDHexEncode(bs.Stream.Conn().RemotePeer()))
 	msg := Msg{Op: opCode, Data: data}
 	return bs.encodeAndFlush(msg)
@@ -85,6 +91,7 @@ func (bs *BasicOutStream) SendMessage(opCode Opcode, data interface{}) error {
 func (bs *BasicOutStream) encodeAndFlush(n interface{}) error {
 	if bs == nil {
 		fmt.Println("stream is nil")
+		return ErrOutStream
 	}
 
 	bs.el.Lock()
@@ -92,13 +99,13 @@ func (bs *BasicOutStream) encodeAndFlush(n interface{}) error {
 	err := bs.enc.Encode(n)
 	if err != nil {
 		glog.Errorf("send message encode error for peer %v: %v", peer.IDHexEncode(bs.Stream.Conn().RemotePeer()), err)
-		return ErrOutStream
+		return err
 	}
 
 	err = bs.w.Flush()
 	if err != nil {
 		glog.Errorf("send message flush error for peer %v: %v", peer.IDHexEncode(bs.Stream.Conn().RemotePeer()), err)
-		return ErrOutStream
+		return err
 	}
 
 	return nil
