@@ -555,6 +555,7 @@ func streamHandler(nw *BasicVideoNetwork, ws *BasicInStream) error {
 		return err
 	}
 
+
 	glog.V(4).Infof("Received a message %v from %v", msg.Op, peer.IDHexEncode(ws.Stream.Conn().RemotePeer()))
 	if msg.Op == GetMasterPlaylistReqID || msg.Op == MasterPlaylistDataID {
 		if nw.msgSentCache.Has(msgSentCacheKey(ws.Stream.Conn().RemotePeer(), msg.Op, msg.Data)) {
@@ -1156,6 +1157,7 @@ func (n *BasicVideoNetwork) sendMessageWithRetry(pid peer.ID, strm OutStream, op
 
 	return nil
 }
+
 
 func randStr() string {
 	rand.Seed(time.Now().UnixNano())

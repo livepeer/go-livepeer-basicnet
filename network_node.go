@@ -89,8 +89,10 @@ func NewNode(listenAddrs []ma.Multiaddr, priv crypto.PrivKey, pub crypto.PubKey,
 	}
 	rHost := rhost.Wrap(basicHost, dht)
 
+
 	glog.V(2).Infof("Created node: %v at %v", peer.IDHexEncode(rHost.ID()), rHost.Addrs())
 	nn := &BasicNetworkNode{Identity: pid, Kad: dht, PeerHost: rHost, outStreams: streams, outStreamsLock: &sync.Mutex{}}
+
 	f.HandleDisconnect(func(pid peer.ID) {
 		nn.RemoveStream(pid)
 	})
